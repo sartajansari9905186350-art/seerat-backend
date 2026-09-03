@@ -418,7 +418,8 @@ export class MobileAuthController {
 
   async googleLogin(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-      const { idToken, email, name, photoUrl } = req.body;
+      const { idToken, email, name, photoUrl, avatarUrl } = req.body;
+      const effectivePhoto = photoUrl || avatarUrl || null;
 
       if (!email || typeof email !== 'string' || !email.includes('@')) {
         ResponseUtil.error(res, 'VALIDATION_ERROR', 'A valid Google email address is required.', 400);
@@ -449,10 +450,10 @@ export class MobileAuthController {
           return;
         }
 
-        // Update profile picture if user doesn't have one and avatarUrl provided
-        if (avatarUrl && (!user.profile_photo || user.profile_photo.includes('unsplash'))) {
-          await query('UPDATE profiles SET profile_photo = $1 WHERE user_id = $2', [avatarUrl, user.id]);
-          user.profile_photo = avatarUrl;
+        // Update profile picture if user doesn't have one and photo provided
+        if (effectivePhoto && (!user.profile_photo || user.profile_photo.includes('unsplash'))) {
+          await query('UPDATE profiles SET profile_photo = $1 WHERE user_id = $2', [effectivePhoto, user.id]);
+          user.profile_photo = effectivePhoto;
         }
       } else {
         // Auto-create user for Google authenticated account
@@ -460,7 +461,8 @@ export class MobileAuthController {
         const baseUsername = cleanEmail.split('@')[0].toLowerCase().replace(/[^a-z0-9_]/g, '_');
         const cleanUsername = `${baseUsername.slice(0, 20)}_${Math.floor(Math.random() * 1000)}`;
         const randomPassHash = await bcrypt.hash(uuidv4(), 10);
-        const photo = avatarUrl || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=300';
+        const photo = effectivePhoto || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=300';
+
 
         await withTransaction(async (client) => {
           await client.query(
