@@ -258,10 +258,11 @@ export class MobileAuthController {
         },
         `OTP sent successfully to ${cleanPhone}.`
       );
-    } catch (err) {
-      next(err);
+    } catch (err: any) {
+      ResponseUtil.error(res, 'OTP_SEND_FAILED', err?.message || 'Failed to send OTP.', 500);
     }
   }
+
 
 
   async verifyOtp(req: Request, res: Response, next: NextFunction): Promise<void> {
@@ -406,8 +407,8 @@ export class MobileAuthController {
         },
         'Phone verified successfully.'
       );
-    } catch (err) {
-      next(err);
+    } catch (err: any) {
+      ResponseUtil.error(res, 'OTP_VERIFY_FAILED', err?.message || 'Failed to verify OTP.', 500);
     }
   }
 
@@ -417,10 +418,10 @@ export class MobileAuthController {
 
   async googleLogin(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-      const { googleId, email, name, idToken, avatarUrl } = req.body;
+      const { idToken, email, name, photoUrl } = req.body;
 
       if (!email || typeof email !== 'string' || !email.includes('@')) {
-        ResponseUtil.error(res, 'VALIDATION_ERROR', 'Valid Google email is required.', 400);
+        ResponseUtil.error(res, 'VALIDATION_ERROR', 'A valid Google email address is required.', 400);
         return;
       }
 
@@ -429,13 +430,9 @@ export class MobileAuthController {
         ? name.trim()
         : cleanEmail.split('@')[0];
 
-      // Lookup user by email
-      const userRes = await query(
-        `SELECT u.id, u.name, u.username, u.email, u.phone, u.status, u.suspension_reason,
-                p.bio, p.profile_photo, p.followers_count, p.following_count, p.posts_count, p.reels_count
-         FROM users u
-         LEFT JOIN profiles p ON u.id = p.user_id
-         WHERE LOWER(u.email) = $1`,
+      // Check if user already exists
+      let userRes = await query(
+        'SELECT id, name, username, email, status, phone FROM users WHERE LOWER(email) = $1',
         [cleanEmail]
       );
 
