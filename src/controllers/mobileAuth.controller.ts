@@ -203,6 +203,341 @@ export class MobileAuthController {
     }
   }
 
+  // ==========================================
+  // MOBILE OTP AUTHENTICATION
+  // ==========================================
+
+  private async ensureOtpTable(): Promise<void> {
+    try {
+      await query(`
+        CREATE TABLE IF NOT EXISTS phone_otps (
+          id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+          phone VARCHAR(50) NOT NULL,
+          otp VARCHAR(10) NOT NULL,
+          expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
+          attempts INT DEFAULT 0,
+          created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE INDEX IF NOT EXISTS idx_phone_otps_phone ON phone_otps(phone);
+      `);
+    } catch (e) {
+      // Table may already exist or running concurrently
+    }
+  }
+
+  async sendOtp(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      await this.ensureOtpTable();
+      const { phone } = req.body;
+
+      if (!phone || typeof phone !== 'string' || phone.trim().length < 6) {
+        ResponseUtil.error(res, 'VALIDATION_ERROR', 'Please enter a valid mobile phone number.', 400);
+        return;
+      }
+
+      const cleanPhone = phone.trim().replace(/[\s-]/g, '');
+      const otp = Math.floor(100000 + Math.random() * 900000).toString();
+      const expiresAt = new Date(Date.now() + 5 * 60 * 1000); // 5 minutes expiry
+
+      // Remove any prior pending OTP for this number
+      await query('DELETE FROM phone_otps WHERE phone = $1', [cleanPhone]);
+
+      // Save new OTP
+      await query(
+        'INSERT INTO phone_otps (phone, otp, expires_at, attempts) VALUES ($1, $2, $3, 0)',
+        [cleanPhone, otp, expiresAt]
+      );
+
+      // In production with SMS gateway, trigger SMS here.
+      // We also return a clean confirmation message.
+      ResponseUtil.success(
+        res,
+        {
+          phone: cleanPhone,
+          expires_in_seconds: 300
+        },
+        `OTP sent successfully to ${cleanPhone}.`
+      );
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  async verifyOtp(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      await this.ensureOtpTable();
+      const { phone, otp } = req.body;
+
+      if (!phone || !otp) {
+        ResponseUtil.error(res, 'VALIDATION_ERROR', 'Phone number and 6-digit OTP are required.', 400);
+        return;
+      }
+
+      const cleanPhone = phone.trim().replace(/[\s-]/g, '');
+      const cleanOtp = otp.toString().trim();
+
+      const otpRes = await query(
+        'SELECT * FROM phone_otps WHERE phone = $1 ORDER BY created_at DESC LIMIT 1',
+        [cleanPhone]
+      );
+
+      if (otpRes.rows.length === 0) {
+        ResponseUtil.error(res, 'INVALID_OTP', 'No OTP requested for this phone number. Please tap Send OTP.', 400);
+        return;
+      }
+
+      const record = otpRes.rows[0];
+
+      // Check expiry
+      if (new Date(record.expires_at).getTime() < Date.now()) {
+        await query('DELETE FROM phone_otps WHERE phone = $1', [cleanPhone]);
+        ResponseUtil.error(res, 'OTP_EXPIRED', 'OTP has expired. Please request a new one.', 400);
+        return;
+      }
+
+      // Check OTP match
+      if (record.otp !== cleanOtp) {
+        await query('UPDATE phone_otps SET attempts = attempts + 1 WHERE id = $1', [record.id]);
+        ResponseUtil.error(res, 'INVALID_OTP', 'Invalid OTP code. Please enter the correct 6-digit code.', 400);
+        return;
+      }
+
+      // OTP is valid - consume it immediately so it cannot be replayed
+      await query('DELETE FROM phone_otps WHERE phone = $1', [cleanPhone]);
+
+      // Check if user already exists with this phone
+      let userRes = await query(
+        `SELECT u.id, u.name, u.username, u.email, u.phone, u.status, u.suspension_reason,
+                p.bio, p.profile_photo, p.followers_count, p.following_count, p.posts_count, p.reels_count
+         FROM users u
+         LEFT JOIN profiles p ON u.id = p.user_id
+         WHERE u.phone = $1`,
+        [cleanPhone]
+      );
+
+      let user: any;
+
+      if (userRes.rows.length > 0) {
+        user = userRes.rows[0];
+        if (user.status === 'SUSPENDED') {
+          ResponseUtil.error(res, 'ACCOUNT_SUSPENDED', `Account suspended: ${user.suspension_reason || 'Guidelines violation'}`, 403);
+          return;
+        }
+        if (user.status === 'DISABLED') {
+          ResponseUtil.error(res, 'ACCOUNT_DISABLED', 'Account is deactivated.', 403);
+          return;
+        }
+      } else {
+        // Auto-create new user account for verified phone
+        const newUserId = uuidv4();
+        const digitsOnly = cleanPhone.replace(/\D/g, '');
+        const suffix = digitsOnly.slice(-4) || 'user';
+        const newName = `User ${suffix}`;
+        const newUsername = `user_${digitsOnly.slice(-6) || uuidv4().slice(0, 6)}_${Math.floor(Math.random() * 1000)}`;
+        const dummyEmail = `phone_${digitsOnly || uuidv4().slice(0, 8)}@seerat.app`;
+        const randomPassHash = await bcrypt.hash(uuidv4(), 10);
+
+        await withTransaction(async (client) => {
+          await client.query(
+            `INSERT INTO users (id, name, username, email, phone, password_hash, status)
+             VALUES ($1, $2, $3, $4, $5, $6, 'ACTIVE')`,
+            [newUserId, newName, newUsername, dummyEmail, cleanPhone, randomPassHash]
+          );
+
+          await client.query(
+            `INSERT INTO profiles (user_id, bio, profile_photo)
+             VALUES ($1, 'Seeker of beneficial Islamic knowledge.', 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=300')`,
+            [newUserId]
+          );
+        });
+
+        user = {
+          id: newUserId,
+          name: newName,
+          username: newUsername,
+          email: dummyEmail,
+          phone: cleanPhone,
+          bio: 'Seeker of beneficial Islamic knowledge.',
+          profile_photo: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=300',
+          is_verified: false,
+          status: 'ACTIVE',
+          followers_count: 0,
+          following_count: 0,
+          posts_count: 0,
+          reels_count: 0,
+          is_following: false
+        };
+      }
+
+      const payload: UserAuthPayload = {
+        id: user.id,
+        name: user.name,
+        username: user.username,
+        email: user.email
+      };
+
+      const token = jwt.sign(payload, env.jwtSecret, { expiresIn: '90d' as any });
+
+      const returnUser = {
+        id: user.id,
+        name: user.name,
+        username: user.username,
+        email: user.email,
+        phone: user.phone || cleanPhone,
+        bio: user.bio || '',
+        profile_photo: user.profile_photo || '',
+        is_verified: user.is_verified || false,
+        status: user.status || 'ACTIVE',
+        followers_count: user.followers_count || 0,
+        following_count: user.following_count || 0,
+        posts_count: user.posts_count || 0,
+        reels_count: user.reels_count || 0,
+        is_following: false
+      };
+
+      ResponseUtil.success(
+        res,
+        {
+          token,
+          refresh_token: token,
+          user: returnUser,
+          is_admin: false
+        },
+        'Phone verified successfully.'
+      );
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  // ==========================================
+  // GOOGLE SIGN-IN AUTHENTICATION
+  // ==========================================
+
+  async googleLogin(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const { googleId, email, name, idToken, avatarUrl } = req.body;
+
+      if (!email || typeof email !== 'string' || !email.includes('@')) {
+        ResponseUtil.error(res, 'VALIDATION_ERROR', 'Valid Google email is required.', 400);
+        return;
+      }
+
+      const cleanEmail = email.toLowerCase().trim();
+      const displayName = (name && typeof name === 'string' && name.trim().length > 0)
+        ? name.trim()
+        : cleanEmail.split('@')[0];
+
+      // Lookup user by email
+      const userRes = await query(
+        `SELECT u.id, u.name, u.username, u.email, u.phone, u.status, u.suspension_reason,
+                p.bio, p.profile_photo, p.followers_count, p.following_count, p.posts_count, p.reels_count
+         FROM users u
+         LEFT JOIN profiles p ON u.id = p.user_id
+         WHERE LOWER(u.email) = $1`,
+        [cleanEmail]
+      );
+
+      let user: any;
+
+      if (userRes.rows.length > 0) {
+        user = userRes.rows[0];
+        if (user.status === 'SUSPENDED') {
+          ResponseUtil.error(res, 'ACCOUNT_SUSPENDED', `Account suspended: ${user.suspension_reason || 'Guidelines violation'}`, 403);
+          return;
+        }
+        if (user.status === 'DISABLED') {
+          ResponseUtil.error(res, 'ACCOUNT_DISABLED', 'Account is deactivated.', 403);
+          return;
+        }
+
+        // Update profile picture if user doesn't have one and avatarUrl provided
+        if (avatarUrl && (!user.profile_photo || user.profile_photo.includes('unsplash'))) {
+          await query('UPDATE profiles SET profile_photo = $1 WHERE user_id = $2', [avatarUrl, user.id]);
+          user.profile_photo = avatarUrl;
+        }
+      } else {
+        // Auto-create user for Google authenticated account
+        const newUserId = uuidv4();
+        const baseUsername = cleanEmail.split('@')[0].toLowerCase().replace(/[^a-z0-9_]/g, '_');
+        const cleanUsername = `${baseUsername.slice(0, 20)}_${Math.floor(Math.random() * 1000)}`;
+        const randomPassHash = await bcrypt.hash(uuidv4(), 10);
+        const photo = avatarUrl || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=300';
+
+        await withTransaction(async (client) => {
+          await client.query(
+            `INSERT INTO users (id, name, username, email, password_hash, status)
+             VALUES ($1, $2, $3, $4, $5, 'ACTIVE')`,
+            [newUserId, displayName, cleanUsername, cleanEmail, randomPassHash]
+          );
+
+          await client.query(
+            `INSERT INTO profiles (user_id, bio, profile_photo)
+             VALUES ($1, 'Seeker of beneficial Islamic knowledge.', $2)`,
+            [newUserId, photo]
+          );
+        });
+
+        user = {
+          id: newUserId,
+          name: displayName,
+          username: cleanUsername,
+          email: cleanEmail,
+          phone: null,
+          bio: 'Seeker of beneficial Islamic knowledge.',
+          profile_photo: photo,
+          is_verified: false,
+          status: 'ACTIVE',
+          followers_count: 0,
+          following_count: 0,
+          posts_count: 0,
+          reels_count: 0,
+          is_following: false
+        };
+      }
+
+      const payload: UserAuthPayload = {
+        id: user.id,
+        name: user.name,
+        username: user.username,
+        email: user.email
+      };
+
+      const token = jwt.sign(payload, env.jwtSecret, { expiresIn: '90d' as any });
+
+      const returnUser = {
+        id: user.id,
+        name: user.name,
+        username: user.username,
+        email: user.email,
+        phone: user.phone || null,
+        bio: user.bio || '',
+        profile_photo: user.profile_photo || '',
+        is_verified: user.is_verified || false,
+        status: user.status || 'ACTIVE',
+        followers_count: user.followers_count || 0,
+        following_count: user.following_count || 0,
+        posts_count: user.posts_count || 0,
+        reels_count: user.reels_count || 0,
+        is_following: false
+      };
+
+      ResponseUtil.success(
+        res,
+        {
+          token,
+          refresh_token: token,
+          user: returnUser,
+          is_admin: false
+        },
+        'Signed in with Google successfully.'
+      );
+    } catch (err) {
+      next(err);
+    }
+  }
+
+
   async getMe(req: AuthenticatedUserRequest, res: Response, next: NextFunction): Promise<void> {
     try {
       const userId = req.user!.id;

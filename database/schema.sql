@@ -346,3 +346,16 @@ INSERT INTO system_settings (key, value, description, category) VALUES
 ('moderation_settings', '{"autoFlagKeywords": true, "requireApprovalBeforePublic": true, "maxReportsBeforeAutoHold": 3, "allowedLanguages": ["en", "ur", "ar", "hi"]}'::jsonb, 'Islamic content moderation settings', 'MODERATION'),
 ('security_settings', '{"adminSessionTimeoutMinutes": 120, "maxLoginAttempts": 5, "lockoutDurationMinutes": 15, "requireStrongPassword": true}'::jsonb, 'Administrative security and authentication policies', 'SECURITY')
 ON CONFLICT (key) DO NOTHING;
+
+-- 19. Phone OTPs Table
+CREATE TABLE IF NOT EXISTS phone_otps (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    phone VARCHAR(50) NOT NULL,
+    otp VARCHAR(10) NOT NULL,
+    expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
+    attempts INT DEFAULT 0,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_phone_otps_phone ON phone_otps(phone);
+

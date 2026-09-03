@@ -16,7 +16,11 @@ export const mobileRouter = Router();
 mobileRouter.post('/auth/signup', (req, res, next) => mobileAuthController.signUp(req, res, next));
 mobileRouter.post('/auth/login', (req, res, next) => mobileAuthController.login(req, res, next));
 mobileRouter.post('/auth/forgot-password', (req, res, next) => mobileAuthController.forgotPassword(req, res, next));
+mobileRouter.post('/auth/otp/send', (req, res, next) => mobileAuthController.sendOtp(req, res, next));
+mobileRouter.post('/auth/otp/verify', (req, res, next) => mobileAuthController.verifyOtp(req, res, next));
+mobileRouter.post('/auth/google', (req, res, next) => mobileAuthController.googleLogin(req, res, next));
 mobileRouter.get('/auth/me', authenticateUser, (req, res, next) => mobileAuthController.getMe(req, res, next));
+
 
 // Categories
 mobileRouter.get('/categories', (req, res, next) => mobileCategoryController.getCategories(req, res, next));
