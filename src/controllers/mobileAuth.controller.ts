@@ -83,7 +83,8 @@ export class MobileAuthController {
         following_count: 0,
         posts_count: 0,
         reels_count: 0,
-        is_following: false
+        is_following: false,
+        is_profile_completed: true
       };
 
       ResponseUtil.success(
@@ -114,7 +115,7 @@ export class MobileAuthController {
       const searchKey = emailOrPhone.toLowerCase().trim();
 
       const userRes = await query(
-        `SELECT u.id, u.name, u.username, u.email, u.phone, u.password_hash, u.is_verified, u.status, u.suspension_reason,
+        `SELECT u.id, u.name, u.username, u.email, u.phone, u.password_hash, u.is_verified, u.status, u.suspension_reason, u.is_profile_completed,
                 p.bio, p.profile_photo, p.followers_count, p.following_count, p.posts_count, p.reels_count
          FROM users u
          LEFT JOIN profiles p ON u.id = p.user_id
@@ -173,8 +174,10 @@ export class MobileAuthController {
         following_count: user.following_count || 0,
         posts_count: user.posts_count || 0,
         reels_count: user.reels_count || 0,
-        is_following: false
+        is_following: false,
+        is_profile_completed: Boolean(user.is_profile_completed !== false)
       };
+
 
       ResponseUtil.success(
         res,
@@ -309,7 +312,7 @@ export class MobileAuthController {
 
       // Check if user already exists with this phone
       let userRes = await query(
-        `SELECT u.id, u.name, u.username, u.email, u.phone, u.status, u.suspension_reason,
+        `SELECT u.id, u.name, u.username, u.email, u.phone, u.status, u.suspension_reason, u.is_profile_completed,
                 p.bio, p.profile_photo, p.followers_count, p.following_count, p.posts_count, p.reels_count
          FROM users u
          LEFT JOIN profiles p ON u.id = p.user_id
@@ -330,7 +333,7 @@ export class MobileAuthController {
           return;
         }
       } else {
-        // Auto-create new user account for verified phone
+        // Auto-create new user account for verified phone (marked is_profile_completed = false)
         const newUserId = uuidv4();
         const digitsOnly = cleanPhone.replace(/\D/g, '');
         const suffix = digitsOnly.slice(-4) || 'user';
@@ -341,8 +344,8 @@ export class MobileAuthController {
 
         await withTransaction(async (client) => {
           await client.query(
-            `INSERT INTO users (id, name, username, email, phone, password_hash, status)
-             VALUES ($1, $2, $3, $4, $5, $6, 'ACTIVE')`,
+            `INSERT INTO users (id, name, username, email, phone, password_hash, status, is_profile_completed)
+             VALUES ($1, $2, $3, $4, $5, $6, 'ACTIVE', FALSE)`,
             [newUserId, newName, newUsername, dummyEmail, cleanPhone, randomPassHash]
           );
 
@@ -367,7 +370,8 @@ export class MobileAuthController {
           following_count: 0,
           posts_count: 0,
           reels_count: 0,
-          is_following: false
+          is_following: false,
+          is_profile_completed: false
         };
       }
 
@@ -394,7 +398,8 @@ export class MobileAuthController {
         following_count: user.following_count || 0,
         posts_count: user.posts_count || 0,
         reels_count: user.reels_count || 0,
-        is_following: false
+        is_following: false,
+        is_profile_completed: Boolean(user.is_profile_completed !== false)
       };
 
       ResponseUtil.success(
@@ -403,7 +408,8 @@ export class MobileAuthController {
           token,
           refresh_token: token,
           user: returnUser,
-          is_admin: false
+          is_admin: false,
+          is_profile_completed: returnUser.is_profile_completed
         },
         'Phone verified successfully.'
       );
@@ -433,7 +439,7 @@ export class MobileAuthController {
 
       // Check if user already exists
       let userRes = await query(
-        'SELECT id, name, username, email, status, phone FROM users WHERE LOWER(email) = $1',
+        'SELECT id, name, username, email, status, phone, is_profile_completed FROM users WHERE LOWER(email) = $1',
         [cleanEmail]
       );
 
@@ -456,18 +462,17 @@ export class MobileAuthController {
           user.profile_photo = effectivePhoto;
         }
       } else {
-        // Auto-create user for Google authenticated account
+        // Auto-create user for Google authenticated account (marked is_profile_completed = false)
         const newUserId = uuidv4();
         const baseUsername = cleanEmail.split('@')[0].toLowerCase().replace(/[^a-z0-9_]/g, '_');
         const cleanUsername = `${baseUsername.slice(0, 20)}_${Math.floor(Math.random() * 1000)}`;
         const randomPassHash = await bcrypt.hash(uuidv4(), 10);
         const photo = effectivePhoto || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=300';
 
-
         await withTransaction(async (client) => {
           await client.query(
-            `INSERT INTO users (id, name, username, email, password_hash, status)
-             VALUES ($1, $2, $3, $4, $5, 'ACTIVE')`,
+            `INSERT INTO users (id, name, username, email, password_hash, status, is_profile_completed)
+             VALUES ($1, $2, $3, $4, $5, 'ACTIVE', FALSE)`,
             [newUserId, displayName, cleanUsername, cleanEmail, randomPassHash]
           );
 
@@ -492,7 +497,8 @@ export class MobileAuthController {
           following_count: 0,
           posts_count: 0,
           reels_count: 0,
-          is_following: false
+          is_following: false,
+          is_profile_completed: false
         };
       }
 
@@ -519,7 +525,8 @@ export class MobileAuthController {
         following_count: user.following_count || 0,
         posts_count: user.posts_count || 0,
         reels_count: user.reels_count || 0,
-        is_following: false
+        is_following: false,
+        is_profile_completed: Boolean(user.is_profile_completed !== false)
       };
 
       ResponseUtil.success(
@@ -528,7 +535,8 @@ export class MobileAuthController {
           token,
           refresh_token: token,
           user: returnUser,
-          is_admin: false
+          is_admin: false,
+          is_profile_completed: returnUser.is_profile_completed
         },
         'Signed in with Google successfully.'
       );
@@ -537,12 +545,11 @@ export class MobileAuthController {
     }
   }
 
-
   async getMe(req: AuthenticatedUserRequest, res: Response, next: NextFunction): Promise<void> {
     try {
       const userId = req.user!.id;
       const userRes = await query(
-        `SELECT u.id, u.name, u.username, u.email, u.phone, u.is_verified, u.status,
+        `SELECT u.id, u.name, u.username, u.email, u.phone, u.is_verified, u.status, u.is_profile_completed,
                 p.bio, p.profile_photo, p.followers_count, p.following_count, p.posts_count, p.reels_count
          FROM users u
          LEFT JOIN profiles p ON u.id = p.user_id
@@ -570,7 +577,8 @@ export class MobileAuthController {
         following_count: u.following_count || 0,
         posts_count: u.posts_count || 0,
         reels_count: u.reels_count || 0,
-        is_following: false
+        is_following: false,
+        is_profile_completed: Boolean(u.is_profile_completed !== false)
       };
 
       ResponseUtil.success(res, profile);
@@ -578,6 +586,115 @@ export class MobileAuthController {
       next(err);
     }
   }
+
+  // ==========================================
+  // COMPLETE FIRST-TIME PROFILE SETUP
+  // ==========================================
+
+  async completeProfile(req: AuthenticatedUserRequest, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const userId = req.user!.id;
+      const { name, username } = req.body;
+
+      if (!name || typeof name !== 'string' || name.trim().length === 0) {
+        ResponseUtil.error(res, 'VALIDATION_ERROR', 'Full Name is required.', 400);
+        return;
+      }
+
+      if (!username || typeof username !== 'string' || username.trim().length === 0) {
+        ResponseUtil.error(res, 'VALIDATION_ERROR', 'Username is required.', 400);
+        return;
+      }
+
+      const cleanName = name.trim();
+      const cleanUsername = username.trim().toLowerCase();
+
+      // Username validation: 3-30 chars, alphanumeric or underscores
+      const usernameRegex = /^[a-zA-Z0-9_]{3,30}$/;
+      if (!usernameRegex.test(cleanUsername)) {
+        ResponseUtil.error(
+          res,
+          'VALIDATION_ERROR',
+          'Username must be 3 to 30 characters and contain only letters, numbers, or underscores.',
+          400
+        );
+        return;
+      }
+
+      // Check if username is already taken by another user
+      const duplicateCheck = await query(
+        'SELECT id FROM users WHERE LOWER(username) = $1 AND id != $2',
+        [cleanUsername, userId]
+      );
+
+      if (duplicateCheck.rows.length > 0) {
+        ResponseUtil.error(
+          res,
+          'USERNAME_TAKEN',
+          'This username is already taken. Please choose another username.',
+          409
+        );
+        return;
+      }
+
+      // Update user name, username, and mark profile completed
+      await query(
+        `UPDATE users
+         SET name = $1,
+             username = $2,
+             is_profile_completed = TRUE,
+             updated_at = CURRENT_TIMESTAMP
+         WHERE id = $3`,
+        [cleanName, cleanUsername, userId]
+      );
+
+      // Fetch updated user record
+      const userRes = await query(
+        `SELECT u.id, u.name, u.username, u.email, u.phone, u.is_verified, u.status, u.is_profile_completed,
+                p.bio, p.profile_photo, p.followers_count, p.following_count, p.posts_count, p.reels_count
+         FROM users u
+         LEFT JOIN profiles p ON u.id = p.user_id
+         WHERE u.id = $1`,
+        [userId]
+      );
+
+      if (userRes.rows.length === 0) {
+        ResponseUtil.error(res, 'USER_NOT_FOUND', 'User not found.', 404);
+        return;
+      }
+
+      const u = userRes.rows[0];
+      const returnUser = {
+        id: u.id,
+        name: u.name,
+        username: u.username,
+        email: u.email,
+        phone: u.phone,
+        bio: u.bio || '',
+        profile_photo: u.profile_photo || '',
+        is_verified: u.is_verified || false,
+        status: u.status,
+        followers_count: u.followers_count || 0,
+        following_count: u.following_count || 0,
+        posts_count: u.posts_count || 0,
+        reels_count: u.reels_count || 0,
+        is_following: false,
+        is_profile_completed: true
+      };
+
+      ResponseUtil.success(
+        res,
+        {
+          user: returnUser,
+          is_profile_completed: true
+        },
+        'Profile completed successfully.'
+      );
+    } catch (err) {
+      next(err);
+    }
+  }
 }
+
 
 export const mobileAuthController = new MobileAuthController();

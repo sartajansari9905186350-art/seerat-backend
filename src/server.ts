@@ -34,6 +34,14 @@ const checkAndInitSchema = async (): Promise<void> => {
       logger.info('Database tables verified. Ready for operation.');
     }
 
+    // Ensure is_profile_completed column exists on users table
+    try {
+      await query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS is_profile_completed BOOLEAN DEFAULT TRUE;`);
+    } catch (colErr: any) {
+      logger.warn('Could not ensure is_profile_completed column:', colErr.message);
+    }
+
+
   } catch (err: any) {
     logger.warn('Schema check warning, attempting migration if needed:', err.message);
     try {

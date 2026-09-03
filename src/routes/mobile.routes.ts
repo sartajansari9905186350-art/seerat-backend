@@ -19,7 +19,9 @@ mobileRouter.post('/auth/forgot-password', (req, res, next) => mobileAuthControl
 mobileRouter.post('/auth/otp/send', (req, res, next) => mobileAuthController.sendOtp(req, res, next));
 mobileRouter.post('/auth/otp/verify', (req, res, next) => mobileAuthController.verifyOtp(req, res, next));
 mobileRouter.post('/auth/google', (req, res, next) => mobileAuthController.googleLogin(req, res, next));
+mobileRouter.post('/auth/complete-profile', authenticateUser, (req, res, next) => mobileAuthController.completeProfile(req, res, next));
 mobileRouter.get('/auth/me', authenticateUser, (req, res, next) => mobileAuthController.getMe(req, res, next));
+
 
 
 // Categories
