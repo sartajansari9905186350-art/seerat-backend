@@ -6,6 +6,19 @@ import { runMigration } from '../database/migrate';
 
 const checkAndInitSchema = async (): Promise<void> => {
   try {
+    // Ensure phone_otps table exists
+    await query(`
+      CREATE TABLE IF NOT EXISTS phone_otps (
+        id SERIAL PRIMARY KEY,
+        phone VARCHAR(50) NOT NULL,
+        otp VARCHAR(10) NOT NULL,
+        expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
+        attempts INT DEFAULT 0,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+    await query(`CREATE INDEX IF NOT EXISTS idx_phone_otps_phone ON phone_otps(phone);`);
+
     const res = await query(`
       SELECT EXISTS (
         SELECT FROM information_schema.tables 
@@ -20,6 +33,7 @@ const checkAndInitSchema = async (): Promise<void> => {
     } else {
       logger.info('Database tables verified. Ready for operation.');
     }
+
   } catch (err: any) {
     logger.warn('Schema check warning, attempting migration if needed:', err.message);
     try {

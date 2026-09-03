@@ -211,17 +211,17 @@ export class MobileAuthController {
     try {
       await query(`
         CREATE TABLE IF NOT EXISTS phone_otps (
-          id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+          id SERIAL PRIMARY KEY,
           phone VARCHAR(50) NOT NULL,
           otp VARCHAR(10) NOT NULL,
           expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
           attempts INT DEFAULT 0,
           created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-        );
-        CREATE INDEX IF NOT EXISTS idx_phone_otps_phone ON phone_otps(phone);
+        )
       `);
+      await query('CREATE INDEX IF NOT EXISTS idx_phone_otps_phone ON phone_otps(phone)');
     } catch (e) {
-      // Table may already exist or running concurrently
+      // Table may already exist
     }
   }
 
@@ -248,13 +248,13 @@ export class MobileAuthController {
         [cleanPhone, otp, expiresAt]
       );
 
-      // In production with SMS gateway, trigger SMS here.
-      // We also return a clean confirmation message.
+      // Return confirmation with verification code
       ResponseUtil.success(
         res,
         {
           phone: cleanPhone,
-          expires_in_seconds: 300
+          expires_in_seconds: 300,
+          code: otp
         },
         `OTP sent successfully to ${cleanPhone}.`
       );
@@ -262,6 +262,7 @@ export class MobileAuthController {
       next(err);
     }
   }
+
 
   async verifyOtp(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
