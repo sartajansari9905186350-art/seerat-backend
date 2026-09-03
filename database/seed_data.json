@@ -1,0 +1,343 @@
+{
+  "categories": [
+    { "id": 1, "name": "All", "slug": "all", "arabic_name": "الكل", "sort_order": 0 },
+    { "id": 2, "name": "Quran", "slug": "quran", "arabic_name": "القرآن الكريم", "sort_order": 1 },
+    { "id": 3, "name": "Hadith", "slug": "hadith", "arabic_name": "الحديث الشريف", "sort_order": 2 },
+    { "id": 4, "name": "Dua", "slug": "dua", "arabic_name": "الأدعية والأذكار", "sort_order": 3 },
+    { "id": 5, "name": "Bayan", "slug": "bayan", "arabic_name": "بيانات ودروس", "sort_order": 4 },
+    { "id": 6, "name": "Zikr", "slug": "zikr", "arabic_name": "أذكار الصباح والمساء", "sort_order": 5 },
+    { "id": 7, "name": "Seerah", "slug": "seerah", "arabic_name": "السيرة النبوية", "sort_order": 6 }
+  ],
+  "users": [
+    {
+      "id": "11111111-1111-1111-1111-111111111111",
+      "name": "Dr. Omar Al-Qurashi",
+      "username": "dromar",
+      "email": "omar@seerat.app",
+      "phone": "+966500000001",
+      "password_hash": "$2a$10$vI8aWBnW3fID.ZQ4/ZO1e.uQ1F0z6u8N2b0s3bW1Qv7V2G2lXv7gW",
+      "bio": "Islamic scholar, Quranic linguistics researcher and teacher. Spreading authentic knowledge.",
+      "profile_photo": "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=300",
+      "is_verified": true,
+      "is_private": false,
+      "is_suspended": false
+    },
+    {
+      "id": "22222222-2222-2222-2222-222222222222",
+      "name": "Shaykh Hamza Yusuf",
+      "username": "shaykh_hamza",
+      "email": "hamza@seerat.app",
+      "phone": "+14155550102",
+      "password_hash": "$2a$10$vI8aWBnW3fID.ZQ4/ZO1e.uQ1F0z6u8N2b0s3bW1Qv7V2G2lXv7gW",
+      "bio": "Reflections on Hadith, classical Islamic thought, and purification of the heart.",
+      "profile_photo": "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=300",
+      "is_verified": true,
+      "is_private": false,
+      "is_suspended": false
+    },
+    {
+      "id": "33333333-3333-3333-3333-333333333333",
+      "name": "Qari Ziyad Patel",
+      "username": "qari_ziyad",
+      "email": "ziyad@seerat.app",
+      "phone": "+27825550103",
+      "password_hash": "$2a$10$vI8aWBnW3fID.ZQ4/ZO1e.uQ1F0z6u8N2b0s3bW1Qv7V2G2lXv7gW",
+      "bio": "Reciter of the Holy Quran and Nasheed artist. Inspiring hearts with the Book of Allah.",
+      "profile_photo": "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=300",
+      "is_verified": true,
+      "is_private": false,
+      "is_suspended": false
+    },
+    {
+      "id": "44444444-4444-4444-4444-444444444444",
+      "name": "Seerah Academy",
+      "username": "seerah_academy",
+      "email": "academy@seerat.app",
+      "phone": "+442079460104",
+      "password_hash": "$2a$10$vI8aWBnW3fID.ZQ4/ZO1e.uQ1F0z6u8N2b0s3bW1Qv7V2G2lXv7gW",
+      "bio": "Documenting the blessed life of the Prophet Muhammad ﷺ through visual journeys.",
+      "profile_photo": "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=300",
+      "is_verified": true,
+      "is_private": false,
+      "is_suspended": false
+    },
+    {
+      "id": "55555555-5555-5555-5555-555555555555",
+      "name": "Daily Islamic Reminders",
+      "username": "daily_zikr",
+      "email": "daily@seerat.app",
+      "phone": "+919876543210",
+      "password_hash": "$2a$10$vI8aWBnW3fID.ZQ4/ZO1e.uQ1F0z6u8N2b0s3bW1Qv7V2G2lXv7gW",
+      "bio": "Daily authentic Duas, Morning & Evening Adhkar and uplifting spiritual reflections.",
+      "profile_photo": "https://images.unsplash.com/photo-1517841905240-472988babdf9?w=300",
+      "is_verified": true,
+      "is_private": false,
+      "is_suspended": false
+    }
+  ],
+  "admin_users": [
+    {
+      "id": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+      "name": "SEERAT Chief Moderator",
+      "email": "admin@seerat.app",
+      "password_hash": "$2a$10$vI8aWBnW3fID.ZQ4/ZO1e.uQ1F0z6u8N2b0s3bW1Qv7V2G2lXv7gW",
+      "role": "super_admin"
+    },
+    {
+      "id": "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+      "name": "Review Moderator 1",
+      "email": "moderator@seerat.app",
+      "password_hash": "$2a$10$vI8aWBnW3fID.ZQ4/ZO1e.uQ1F0z6u8N2b0s3bW1Qv7V2G2lXv7gW",
+      "role": "moderator"
+    }
+  ],
+  "media": [
+    {
+      "id": "m1111111-1111-1111-1111-111111111111",
+      "owner_id": "11111111-1111-1111-1111-111111111111",
+      "media_type": "PHOTO",
+      "url": "https://images.unsplash.com/photo-1609599006353-e629aaabfeae?w=800",
+      "thumbnail_url": "https://images.unsplash.com/photo-1609599006353-e629aaabfeae?w=300",
+      "duration": 0,
+      "width": 1080,
+      "height": 1080,
+      "file_size": 240000,
+      "mime_type": "image/jpeg"
+    },
+    {
+      "id": "m2222222-2222-2222-2222-222222222222",
+      "owner_id": "33333333-3333-3333-3333-333333333333",
+      "media_type": "VIDEO",
+      "url": "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4",
+      "thumbnail_url": "https://images.unsplash.com/photo-1542816417-0983c9c9ad53?w=600",
+      "duration": 45,
+      "width": 1080,
+      "height": 1920,
+      "file_size": 4500000,
+      "mime_type": "video/mp4"
+    },
+    {
+      "id": "m3333333-3333-3333-3333-333333333333",
+      "owner_id": "44444444-4444-4444-4444-444444444444",
+      "media_type": "VIDEO",
+      "url": "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4",
+      "thumbnail_url": "https://images.unsplash.com/photo-1591604129939-f1efa4d9f7fa?w=600",
+      "duration": 30,
+      "width": 1080,
+      "height": 1920,
+      "file_size": 3200000,
+      "mime_type": "video/mp4"
+    },
+    {
+      "id": "m4444444-4444-4444-4444-444444444444",
+      "owner_id": "22222222-2222-2222-2222-222222222222",
+      "media_type": "VIDEO",
+      "url": "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4",
+      "thumbnail_url": "https://images.unsplash.com/photo-1564769625905-50e93615e769?w=600",
+      "duration": 60,
+      "width": 1080,
+      "height": 1920,
+      "file_size": 6000000,
+      "mime_type": "video/mp4"
+    },
+    {
+      "id": "m5555555-5555-5555-5555-555555555555",
+      "owner_id": "55555555-5555-5555-5555-555555555555",
+      "media_type": "PHOTO",
+      "url": "https://images.unsplash.com/photo-1584551246679-0daf3d275d0f?w=800",
+      "thumbnail_url": "https://images.unsplash.com/photo-1584551246679-0daf3d275d0f?w=300",
+      "duration": 0,
+      "width": 1080,
+      "height": 1080,
+      "file_size": 310000,
+      "mime_type": "image/jpeg"
+    }
+  ],
+  "posts": [
+    {
+      "id": "p1111111-1111-1111-1111-111111111111",
+      "user_id": "11111111-1111-1111-1111-111111111111",
+      "category_id": 2,
+      "content_type": "TEXT",
+      "arabic_text": "إِنَّ مَعَ الْعُسْرِ يُسْرًا",
+      "translation_text": "Indeed, with hardship [will be] ease. (Surah Ash-Sharh 94:6)",
+      "text_content": "Never lose hope in the mercy and timing of Allah. When difficulties surround you, ease is already written alongside it.",
+      "reference_source": "Quran 94:6",
+      "language": "en",
+      "status": "APPROVED",
+      "likes_count": 342,
+      "comments_count": 28,
+      "shares_count": 56,
+      "saves_count": 112
+    },
+    {
+      "id": "p2222222-2222-2222-2222-222222222222",
+      "user_id": "22222222-2222-2222-2222-222222222222",
+      "category_id": 3,
+      "content_type": "TEXT",
+      "arabic_text": "خَيْرُكُمْ مَنْ تَعَلَّمَ الْقُرْآنَ وَعَلَّمَهُ",
+      "translation_text": "The best among you are those who learn the Quran and teach it.",
+      "text_content": "A timeless reminder for every seeker of knowledge. Spending time reciting, understanding and teaching the Book of Allah elevates one's rank.",
+      "reference_source": "Sahih al-Bukhari 5027",
+      "language": "en",
+      "status": "APPROVED",
+      "likes_count": 519,
+      "comments_count": 42,
+      "shares_count": 89,
+      "saves_count": 194
+    },
+    {
+      "id": "p3333333-3333-3333-3333-333333333333",
+      "user_id": "55555555-5555-5555-5555-555555555555",
+      "category_id": 4,
+      "content_type": "PHOTO",
+      "media_id": "m1111111-1111-1111-1111-111111111111",
+      "arabic_text": "اللَّهُمَّ إِنِّي أَسْأَلُكَ عِلْمًا نَافِعًا وَرِزْقًا طَيِّبًا وَعَمَلاً مُتَقَبَّلاً",
+      "translation_text": "O Allah, I ask You for beneficial knowledge, good provision, and accepted deeds.",
+      "text_content": "Recite this beautiful Dua after Fajr prayer to start your day with barakah.",
+      "reference_source": "Sunan Ibn Majah 925",
+      "language": "en",
+      "status": "APPROVED",
+      "likes_count": 680,
+      "comments_count": 35,
+      "shares_count": 140,
+      "saves_count": 310
+    },
+    {
+      "id": "p4444444-4444-4444-4444-444444444444",
+      "user_id": "44444444-4444-4444-4444-444444444444",
+      "category_id": 7,
+      "content_type": "TEXT",
+      "arabic_text": "وَإِنَّكَ لَعَلَىٰ خُلُقٍ عَظِيمٍ",
+      "translation_text": "And indeed, you are of a great moral character. (Surah Al-Qalam 68:4)",
+      "text_content": "The mercy of the Prophet ﷺ encompassed believers and opponents alike. When people treated him with hostility in Ta'if, he made dua for their guidance.",
+      "reference_source": "Seerah Ibn Hisham",
+      "language": "en",
+      "status": "APPROVED",
+      "likes_count": 420,
+      "comments_count": 19,
+      "shares_count": 64,
+      "saves_count": 88
+    },
+    {
+      "id": "p5555555-5555-5555-5555-555555555555",
+      "user_id": "11111111-1111-1111-1111-111111111111",
+      "category_id": 6,
+      "content_type": "PHOTO",
+      "media_id": "m5555555-5555-5555-5555-555555555555",
+      "arabic_text": "سُبْحَانَ اللَّهِ وَبِحَمْدِهِ سُبْحَانَ اللَّهِ الْعَظِيمِ",
+      "translation_text": "Glory be to Allah and His is the praise, Glory be to Allah the Greatest.",
+      "text_content": "Two phrases that are light on the tongue, heavy on the scales, and beloved to the Most Merciful.",
+      "reference_source": "Sahih al-Bukhari 6406",
+      "language": "en",
+      "status": "APPROVED",
+      "likes_count": 890,
+      "comments_count": 62,
+      "shares_count": 210,
+      "saves_count": 430
+    }
+  ],
+  "reels": [
+    {
+      "id": "r1111111-1111-1111-1111-111111111111",
+      "user_id": "33333333-3333-3333-3333-333333333333",
+      "category_id": 2,
+      "media_id": "m2222222-2222-2222-2222-222222222222",
+      "caption": "Heart-soothing recitation of Surah Ar-Rahman. Reflect on the blessings of Allah.",
+      "audio_title": "Surah Ar-Rahman (Maqam Bayati)",
+      "audio_artist": "Qari Ziyad Patel",
+      "reference_source": "Surah 55: 1-13",
+      "language": "ar",
+      "status": "APPROVED",
+      "likes_count": 1420,
+      "comments_count": 94,
+      "shares_count": 312,
+      "saves_count": 520,
+      "views_count": 4800
+    },
+    {
+      "id": "r2222222-2222-2222-2222-222222222222",
+      "user_id": "44444444-4444-4444-4444-444444444444",
+      "category_id": 7,
+      "media_id": "m3333333-3333-3333-3333-333333333333",
+      "caption": "The journey of Hijrah from Makkah to Madinah: Lessons of unwavering tawakkul and planning.",
+      "audio_title": "Tala'al Badru Alayna",
+      "audio_artist": "Seerah Chants",
+      "reference_source": "Ar-Raheeq Al-Makhtum",
+      "language": "en",
+      "status": "APPROVED",
+      "likes_count": 980,
+      "comments_count": 58,
+      "shares_count": 180,
+      "saves_count": 340,
+      "views_count": 3200
+    },
+    {
+      "id": "r3333333-3333-3333-3333-333333333333",
+      "user_id": "22222222-2222-2222-2222-222222222222",
+      "category_id": 5,
+      "media_id": "m4444444-4444-4444-4444-444444444444",
+      "caption": "How to cultivate Khushu' (deep presence and focus) in your Salah. 3 practical tips.",
+      "audio_title": "Spiritual Reflections",
+      "audio_artist": "Shaykh Hamza Yusuf",
+      "reference_source": "Ihya Ulum al-Din",
+      "language": "en",
+      "status": "APPROVED",
+      "likes_count": 2100,
+      "comments_count": 145,
+      "shares_count": 530,
+      "saves_count": 890,
+      "views_count": 7600
+    }
+  ],
+  "comments": [
+    {
+      "id": "c1111111-1111-1111-1111-111111111111",
+      "user_id": "22222222-2222-2222-2222-222222222222",
+      "post_id": "p1111111-1111-1111-1111-111111111111",
+      "content": "JazakAllahu khair Dr. Omar. A much needed reminder today.",
+      "likes_count": 14
+    },
+    {
+      "id": "c2222222-2222-2222-2222-222222222222",
+      "user_id": "55555555-5555-5555-5555-555555555555",
+      "post_id": "p1111111-1111-1111-1111-111111111111",
+      "content": "SubhanAllah, indeed with hardship comes ease.",
+      "likes_count": 8
+    },
+    {
+      "id": "c3333333-3333-3333-3333-333333333333",
+      "user_id": "11111111-1111-1111-1111-111111111111",
+      "reel_id": "r1111111-1111-1111-1111-111111111111",
+      "content": "MashaAllah, beautiful recitation Brother Ziyad.",
+      "likes_count": 25
+    }
+  ],
+  "notifications": [
+    {
+      "id": "n1111111-1111-1111-1111-111111111111",
+      "user_id": "11111111-1111-1111-1111-111111111111",
+      "actor_id": "22222222-2222-2222-2222-222222222222",
+      "type": "LIKE",
+      "post_id": "p1111111-1111-1111-1111-111111111111",
+      "message": "liked your reflection on Surah Ash-Sharh",
+      "is_read": false
+    },
+    {
+      "id": "n2222222-2222-2222-2222-222222222222",
+      "user_id": "11111111-1111-1111-1111-111111111111",
+      "actor_id": "33333333-3333-3333-3333-333333333333",
+      "type": "FOLLOW",
+      "message": "started following you",
+      "is_read": true
+    },
+    {
+      "id": "n3333333-3333-3333-3333-333333333333",
+      "user_id": "11111111-1111-1111-1111-111111111111",
+      "type": "CONTENT_APPROVED",
+      "post_id": "p1111111-1111-1111-1111-111111111111",
+      "message": "Your post has been reviewed and approved by SEERAT moderation team.",
+      "is_read": true
+    }
+  ]
+}
