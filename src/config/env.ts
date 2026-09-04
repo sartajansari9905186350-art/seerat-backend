@@ -13,5 +13,7 @@ export const env = {
   jwtRememberExpiresIn: process.env.JWT_REMEMBER_EXPIRES_IN || '30d',
   storageProvider: process.env.STORAGE_PROVIDER || 'LOCAL',
   cdnBaseUrl: process.env.CDN_BASE_URL || 'https://cdn.seerat.app',
-  maxFileSizeMb: parseInt(process.env.MAX_FILE_SIZE_MB || '50', 10)
+  maxFileSizeMb: parseInt(process.env.MAX_FILE_SIZE_MB || '50', 10),
+  facebookAppId: process.env.FACEBOOK_APP_ID || '',
+  facebookAppSecret: process.env.FACEBOOK_APP_SECRET || ''
 };

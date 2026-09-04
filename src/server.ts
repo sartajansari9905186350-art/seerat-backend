@@ -3,6 +3,8 @@ import { env } from './config/env';
 import { testConnection, query } from './config/database';
 import { logger } from './utils/logger';
 import { runMigration } from '../database/migrate';
+import bcrypt from 'bcryptjs';
+import { v4 as uuidv4 } from 'uuid';
 
 const checkAndInitSchema = async (): Promise<void> => {
   try {
@@ -37,8 +39,99 @@ const checkAndInitSchema = async (): Promise<void> => {
     // Ensure is_profile_completed column exists on users table
     try {
       await query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS is_profile_completed BOOLEAN DEFAULT TRUE;`);
+      await query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS auth_provider VARCHAR(50) DEFAULT 'EMAIL';`);
+      await query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS provider_user_id VARCHAR(255);`);
+      await query(`CREATE INDEX IF NOT EXISTS idx_users_provider_user_id ON users(provider_user_id);`);
     } catch (colErr: any) {
-      logger.warn('Could not ensure is_profile_completed column:', colErr.message);
+      logger.warn('Could not ensure user provider and profile columns:', colErr.message);
+    }
+
+    // Ensure authorized Super Admin accounts exist, are active, and have valid bcrypt credentials
+    try {
+      const adminTableCheck = await query(`
+        SELECT EXISTS (
+          SELECT FROM information_schema.tables 
+          WHERE table_schema = 'public' 
+          AND table_name = 'admin_users'
+        );
+      `);
+
+      if (adminTableCheck.rows[0]?.exists) {
+        const existingAdmins = await query(`
+          SELECT id, name, email, role, status, password_hash
+          FROM admin_users
+        `);
+
+        logger.info(`[ADMIN CHECK] Found ${existingAdmins.rows.length} admin accounts in production database.`);
+
+        const salt = await bcrypt.genSalt(12);
+        const superAdminPass = process.env.ADMIN_INITIAL_PASSWORD || 'Seerat@99051';
+        const superAdminHash = await bcrypt.hash(superAdminPass, salt);
+        const altAdminHash = await bcrypt.hash('Admin@Seerat2026!', salt);
+        const modHash = await bcrypt.hash('Mod@Seerat2026!', salt);
+
+        // 1. Primary Authorized Super Admin: helpwaladost@gmail.com
+        const primaryAdmin = existingAdmins.rows.find((a: any) => a.email.toLowerCase() === 'helpwaladost@gmail.com');
+        if (!primaryAdmin) {
+          logger.info('[ADMIN RECOVERY] Restoring primary SUPER_ADMIN (helpwaladost@gmail.com)...');
+          await query(
+            `INSERT INTO admin_users (id, name, email, password_hash, role, status, avatar_url)
+             VALUES ($1, 'Sartaj Ansari', 'helpwaladost@gmail.com', $2, 'SUPER_ADMIN', 'ACTIVE', 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150')
+             ON CONFLICT (email) DO UPDATE
+             SET role = 'SUPER_ADMIN', status = 'ACTIVE', password_hash = EXCLUDED.password_hash`,
+            [uuidv4(), superAdminHash]
+          );
+        } else {
+          logger.info('[ADMIN RECOVERY] Verifying and updating primary SUPER_ADMIN record...');
+          await query(
+            `UPDATE admin_users
+             SET role = 'SUPER_ADMIN',
+                 status = 'ACTIVE',
+                 password_hash = $1,
+                 updated_at = CURRENT_TIMESTAMP
+             WHERE id = $2`,
+            [superAdminHash, primaryAdmin.id]
+          );
+        }
+
+        // 2. Platform Super Admin: admin@seerat.app
+        const altAdmin = existingAdmins.rows.find((a: any) => a.email.toLowerCase() === 'admin@seerat.app');
+        if (!altAdmin) {
+          logger.info('[ADMIN RECOVERY] Restoring platform SUPER_ADMIN (admin@seerat.app)...');
+          await query(
+            `INSERT INTO admin_users (id, name, email, password_hash, role, status, avatar_url)
+             VALUES ($1, 'SEERAT Chief Administrator', 'admin@seerat.app', $2, 'SUPER_ADMIN', 'ACTIVE', '')
+             ON CONFLICT (email) DO UPDATE
+             SET role = 'SUPER_ADMIN', status = 'ACTIVE', password_hash = EXCLUDED.password_hash`,
+            [uuidv4(), altAdminHash]
+          );
+        } else {
+          logger.info('[ADMIN RECOVERY] Verifying and updating platform SUPER_ADMIN record...');
+          await query(
+            `UPDATE admin_users
+             SET role = 'SUPER_ADMIN',
+                 status = 'ACTIVE',
+                 password_hash = $1,
+                 updated_at = CURRENT_TIMESTAMP
+             WHERE id = $2`,
+            [altAdminHash, altAdmin.id]
+          );
+        }
+
+        // 3. Content Moderator: moderator@seerat.app
+        const modAdmin = existingAdmins.rows.find((a: any) => a.email.toLowerCase() === 'moderator@seerat.app');
+        if (!modAdmin) {
+          await query(
+            `INSERT INTO admin_users (id, name, email, password_hash, role, status, avatar_url)
+             VALUES ($1, 'Zayd Al-Ansari', 'moderator@seerat.app', $2, 'MODERATOR', 'ACTIVE', 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150')
+             ON CONFLICT (email) DO UPDATE
+             SET role = 'MODERATOR', status = 'ACTIVE', password_hash = EXCLUDED.password_hash`,
+            [uuidv4(), modHash]
+          );
+        }
+      }
+    } catch (adminInitErr: any) {
+      logger.warn('[ADMIN RECOVERY] Admin check warning:', adminInitErr.message);
     }
 
 

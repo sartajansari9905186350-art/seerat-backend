@@ -207,117 +207,57 @@ export class MobileAuthController {
   }
 
   // ==========================================
-  // MOBILE OTP AUTHENTICATION
+  // FACEBOOK AUTHENTICATION
   // ==========================================
 
-  private async ensureOtpTable(): Promise<void> {
+  async facebookLogin(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-      await query(`
-        CREATE TABLE IF NOT EXISTS phone_otps (
-          id SERIAL PRIMARY KEY,
-          phone VARCHAR(50) NOT NULL,
-          otp VARCHAR(10) NOT NULL,
-          expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
-          attempts INT DEFAULT 0,
-          created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-        )
-      `);
-      await query('CREATE INDEX IF NOT EXISTS idx_phone_otps_phone ON phone_otps(phone)');
-    } catch (e) {
-      // Table may already exist
-    }
-  }
+      const { accessToken } = req.body;
 
-  async sendOtp(req: Request, res: Response, next: NextFunction): Promise<void> {
-    try {
-      await this.ensureOtpTable();
-      const { phone } = req.body;
-
-      if (!phone || typeof phone !== 'string' || phone.trim().length < 6) {
-        ResponseUtil.error(res, 'VALIDATION_ERROR', 'Please enter a valid mobile phone number.', 400);
+      if (!accessToken || typeof accessToken !== 'string' || accessToken.trim().length === 0) {
+        ResponseUtil.error(res, 'VALIDATION_ERROR', 'A valid Facebook access token is required.', 400);
         return;
       }
 
-      const cleanPhone = phone.trim().replace(/[\s-]/g, '');
-      const otp = Math.floor(100000 + Math.random() * 900000).toString();
-      const expiresAt = new Date(Date.now() + 5 * 60 * 1000); // 5 minutes expiry
+      const cleanToken = accessToken.trim();
 
-      // Remove any prior pending OTP for this number
-      await query('DELETE FROM phone_otps WHERE phone = $1', [cleanPhone]);
+      // 1. Verify token and retrieve user profile directly from Meta Graph API
+      let fbProfile: any;
+      try {
+        const graphUrl = `https://graph.facebook.com/me?fields=id,name,email,picture.type(large)&access_token=${encodeURIComponent(cleanToken)}`;
+        const fbResponse = await fetch(graphUrl);
+        fbProfile = await fbResponse.json();
 
-      // Save new OTP
-      await query(
-        'INSERT INTO phone_otps (phone, otp, expires_at, attempts) VALUES ($1, $2, $3, 0)',
-        [cleanPhone, otp, expiresAt]
-      );
-
-      // Return confirmation with verification code
-      ResponseUtil.success(
-        res,
-        {
-          phone: cleanPhone,
-          expires_in_seconds: 300,
-          code: otp
-        },
-        `OTP sent successfully to ${cleanPhone}.`
-      );
-    } catch (err: any) {
-      ResponseUtil.error(res, 'OTP_SEND_FAILED', err?.message || 'Failed to send OTP.', 500);
-    }
-  }
-
-
-
-  async verifyOtp(req: Request, res: Response, next: NextFunction): Promise<void> {
-    try {
-      await this.ensureOtpTable();
-      const { phone, otp } = req.body;
-
-      if (!phone || !otp) {
-        ResponseUtil.error(res, 'VALIDATION_ERROR', 'Phone number and 6-digit OTP are required.', 400);
+        if (!fbResponse.ok || fbProfile.error) {
+          const errorMsg = fbProfile?.error?.message || 'Invalid or expired Facebook access token.';
+          ResponseUtil.error(res, 'INVALID_FACEBOOK_TOKEN', errorMsg, 401);
+          return;
+        }
+      } catch (networkErr: any) {
+        ResponseUtil.error(res, 'FACEBOOK_API_ERROR', 'Failed to verify Facebook token with Meta servers: ' + (networkErr as Error).message, 502);
         return;
       }
 
-      const cleanPhone = phone.trim().replace(/[\s-]/g, '');
-      const cleanOtp = otp.toString().trim();
-
-      const otpRes = await query(
-        'SELECT * FROM phone_otps WHERE phone = $1 ORDER BY created_at DESC LIMIT 1',
-        [cleanPhone]
-      );
-
-      if (otpRes.rows.length === 0) {
-        ResponseUtil.error(res, 'INVALID_OTP', 'No OTP requested for this phone number. Please tap Send OTP.', 400);
+      const fbUserId = fbProfile.id;
+      if (!fbUserId) {
+        ResponseUtil.error(res, 'INVALID_FACEBOOK_TOKEN', 'Could not obtain verified Facebook User ID.', 401);
         return;
       }
 
-      const record = otpRes.rows[0];
+      const verifiedEmail = fbProfile.email ? fbProfile.email.toLowerCase().trim() : null;
+      const verifiedName = (fbProfile.name && typeof fbProfile.name === 'string' && fbProfile.name.trim().length > 0)
+        ? fbProfile.name.trim()
+        : 'Facebook User';
+      const verifiedPhoto = fbProfile.picture?.data?.url || null;
 
-      // Check expiry
-      if (new Date(record.expires_at).getTime() < Date.now()) {
-        await query('DELETE FROM phone_otps WHERE phone = $1', [cleanPhone]);
-        ResponseUtil.error(res, 'OTP_EXPIRED', 'OTP has expired. Please request a new one.', 400);
-        return;
-      }
-
-      // Check OTP match
-      if (record.otp !== cleanOtp) {
-        await query('UPDATE phone_otps SET attempts = attempts + 1 WHERE id = $1', [record.id]);
-        ResponseUtil.error(res, 'INVALID_OTP', 'Invalid OTP code. Please enter the correct 6-digit code.', 400);
-        return;
-      }
-
-      // OTP is valid - consume it immediately so it cannot be replayed
-      await query('DELETE FROM phone_otps WHERE phone = $1', [cleanPhone]);
-
-      // Check if user already exists with this phone
+      // 2. Find existing user by provider_user_id or by verified email
       let userRes = await query(
         `SELECT u.id, u.name, u.username, u.email, u.phone, u.status, u.suspension_reason, u.is_profile_completed,
                 p.bio, p.profile_photo, p.followers_count, p.following_count, p.posts_count, p.reels_count
          FROM users u
          LEFT JOIN profiles p ON u.id = p.user_id
-         WHERE u.phone = $1`,
-        [cleanPhone]
+         WHERE u.provider_user_id = $1 OR (u.email = $2 AND $2 IS NOT NULL)`,
+        [fbUserId, verifiedEmail]
       );
 
       let user: any;
@@ -332,38 +272,54 @@ export class MobileAuthController {
           ResponseUtil.error(res, 'ACCOUNT_DISABLED', 'Account is deactivated.', 403);
           return;
         }
+
+        // Link provider_user_id and auth_provider if not set
+        await query(
+          `UPDATE users SET 
+             auth_provider = COALESCE(auth_provider, 'FACEBOOK'),
+             provider_user_id = COALESCE(provider_user_id, $1)
+           WHERE id = $2`,
+          [fbUserId, user.id]
+        );
+
+        // Update profile picture if user doesn't have a custom one
+        if (verifiedPhoto && (!user.profile_photo || user.profile_photo.includes('unsplash'))) {
+          await query('UPDATE profiles SET profile_photo = $1 WHERE user_id = $2', [verifiedPhoto, user.id]);
+          user.profile_photo = verifiedPhoto;
+        }
       } else {
-        // Auto-create new user account for verified phone (marked is_profile_completed = false)
+        // 3. Create new user for verified Facebook account (marked is_profile_completed = false)
         const newUserId = uuidv4();
-        const digitsOnly = cleanPhone.replace(/\D/g, '');
-        const suffix = digitsOnly.slice(-4) || 'user';
-        const newName = `User ${suffix}`;
-        const newUsername = `user_${digitsOnly.slice(-6) || uuidv4().slice(0, 6)}_${Math.floor(Math.random() * 1000)}`;
-        const dummyEmail = `phone_${digitsOnly || uuidv4().slice(0, 8)}@seerat.app`;
+        const fallbackEmail = verifiedEmail || `fb_${fbUserId}@seerat.app`;
+        const baseUsername = (verifiedEmail ? verifiedEmail.split('@')[0] : `fb_${fbUserId}`)
+          .toLowerCase()
+          .replace(/[^a-z0-9_]/g, '_');
+        const cleanUsername = `${baseUsername.slice(0, 20)}_${Math.floor(Math.random() * 1000)}`;
         const randomPassHash = await bcrypt.hash(uuidv4(), 10);
+        const photo = verifiedPhoto || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=300';
 
         await withTransaction(async (client) => {
           await client.query(
-            `INSERT INTO users (id, name, username, email, phone, password_hash, status, is_profile_completed)
-             VALUES ($1, $2, $3, $4, $5, $6, 'ACTIVE', FALSE)`,
-            [newUserId, newName, newUsername, dummyEmail, cleanPhone, randomPassHash]
+            `INSERT INTO users (id, name, username, email, password_hash, status, auth_provider, provider_user_id, is_profile_completed)
+             VALUES ($1, $2, $3, $4, $5, 'ACTIVE', 'FACEBOOK', $6, FALSE)`,
+            [newUserId, verifiedName, cleanUsername, fallbackEmail, randomPassHash, fbUserId]
           );
 
           await client.query(
             `INSERT INTO profiles (user_id, bio, profile_photo)
-             VALUES ($1, 'Seeker of beneficial Islamic knowledge.', 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=300')`,
-            [newUserId]
+             VALUES ($1, 'Seeker of beneficial Islamic knowledge.', $2)`,
+            [newUserId, photo]
           );
         });
 
         user = {
           id: newUserId,
-          name: newName,
-          username: newUsername,
-          email: dummyEmail,
-          phone: cleanPhone,
+          name: verifiedName,
+          username: cleanUsername,
+          email: fallbackEmail,
+          phone: null,
           bio: 'Seeker of beneficial Islamic knowledge.',
-          profile_photo: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=300',
+          profile_photo: photo,
           is_verified: false,
           status: 'ACTIVE',
           followers_count: 0,
@@ -389,7 +345,7 @@ export class MobileAuthController {
         name: user.name,
         username: user.username,
         email: user.email,
-        phone: user.phone || cleanPhone,
+        phone: user.phone || null,
         bio: user.bio || '',
         profile_photo: user.profile_photo || '',
         is_verified: user.is_verified || false,
@@ -411,10 +367,10 @@ export class MobileAuthController {
           is_admin: false,
           is_profile_completed: returnUser.is_profile_completed
         },
-        'Phone verified successfully.'
+        'Signed in with Facebook successfully.'
       );
-    } catch (err: any) {
-      ResponseUtil.error(res, 'OTP_VERIFY_FAILED', err?.message || 'Failed to verify OTP.', 500);
+    } catch (err) {
+      next(err);
     }
   }
 
