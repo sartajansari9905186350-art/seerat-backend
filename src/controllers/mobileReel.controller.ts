@@ -3,6 +3,8 @@ import { v4 as uuidv4 } from 'uuid';
 import { withTransaction, query } from '../config/database';
 import { ResponseUtil } from '../utils/response';
 import { AuthenticatedUserRequest } from '../middleware/userAuth.middleware';
+import { aiModerationService } from '../services/aiModeration.service';
+
 
 export class MobileReelController {
   async getForYouReels(req: AuthenticatedUserRequest, res: Response, next: NextFunction): Promise<void> {
@@ -208,6 +210,21 @@ export class MobileReelController {
           [userId]
         );
       });
+
+      // Perform AI Islamic content screening (advisory; strictly maintains PENDING_REVIEW)
+      let aiResult: any = null;
+      try {
+        aiResult = await aiModerationService.screenContent({
+          contentType: 'REEL',
+          contentId: reelId,
+          caption,
+          referenceSource,
+          mediaUrl: videoUrl,
+          audioTitle
+        });
+      } catch (aiErr: any) {
+        // Fail-safe guarantee: failure to screen never impedes submission and never publishes
+      }
 
       const catRes = await query('SELECT name FROM categories WHERE id = $1', [categoryId]);
       const categoryName = catRes.rows[0]?.name || 'Quran';

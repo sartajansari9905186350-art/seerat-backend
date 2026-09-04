@@ -1,5 +1,7 @@
 export type ContentType = 'POST' | 'REEL';
-export type ContentStatus = 'DRAFT' | 'PENDING_REVIEW' | 'APPROVED' | 'REJECTED' | 'REMOVED' | 'SUSPENDED';
+export type ContentStatus = 'DRAFT' | 'PENDING_REVIEW' | 'APPROVED' | 'REJECTED' | 'REMOVED' | 'SUSPENDED' | 'FLAGGED';
+
+export type AiModerationStatus = 'LIKELY_ISLAMIC' | 'UNCERTAIN' | 'LIKELY_NON_ISLAMIC' | 'UNSAFE';
 
 export type RejectionReason =
   | 'Not Islamic content'
@@ -23,6 +25,11 @@ export interface Post {
   language: string;
   status: ContentStatus;
   rejection_reason?: string;
+  ai_status?: AiModerationStatus;
+  ai_confidence?: number;
+  ai_reason?: string;
+  ai_analyzed_at?: Date;
+  ai_metadata?: any;
   likes_count: number;
   comments_count: number;
   shares_count: number;
@@ -44,6 +51,11 @@ export interface Reel {
   language: string;
   status: ContentStatus;
   rejection_reason?: string;
+  ai_status?: AiModerationStatus;
+  ai_confidence?: number;
+  ai_reason?: string;
+  ai_analyzed_at?: Date;
+  ai_metadata?: any;
   likes_count: number;
   comments_count: number;
   shares_count: number;
@@ -61,7 +73,11 @@ export interface ModerationReview {
   status: ContentStatus;
   rejection_reason?: string;
   notes?: string;
+  ai_status?: AiModerationStatus;
+  ai_confidence?: number;
+  ai_reason?: string;
   reviewed_by?: string;
   created_at: Date;
   reviewed_at?: Date;
 }
+

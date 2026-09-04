@@ -25,3 +25,9 @@ export const removeContentSchema = z.object({
   contentType: z.enum(['POST', 'REEL']),
   reason: z.string().min(3, 'Removal reason is required').optional().default('Removed by administrator')
 });
+
+export const flagContentSchema = z.object({
+  contentType: z.enum(['POST', 'REEL']),
+  notes: z.string().optional().default('Flagged for senior theological review')
+});
+

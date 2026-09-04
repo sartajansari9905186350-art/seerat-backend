@@ -69,6 +69,23 @@ export class ReviewController {
       next(err);
     }
   }
+
+  async flag(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const { id } = req.params;
+      const { contentType = 'POST', notes = '' } = req.body;
+      const admin = req.admin!;
+      const ipAddress = (req.headers['x-forwarded-for'] as string) || req.ip || '127.0.0.1';
+      const userAgent = req.headers['user-agent'];
+
+      await moderationService.flagContent(id, contentType, notes, admin, ipAddress, userAgent);
+
+      ResponseUtil.success(res, { id, status: 'FLAGGED' }, `${contentType} #${id.slice(0, 8)} flagged for senior theological review.`);
+    } catch (err) {
+      next(err);
+    }
+  }
 }
 
 export const reviewController = new ReviewController();
+

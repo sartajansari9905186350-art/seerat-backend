@@ -132,6 +132,60 @@ export class ModerationService {
     });
   }
 
+  async flagContent(
+    id: string,
+    contentType: ContentType,
+    notes: string = '',
+    admin: AuthTokenPayload,
+    ipAddress?: string,
+    userAgent?: string
+  ): Promise<void> {
+    await withTransaction(async (client) => {
+      const table = contentType === 'POST' ? 'posts' : 'reels';
+
+      const updateRes = await client.query(
+        `UPDATE ${table} 
+         SET status = 'FLAGGED', rejection_reason = $1, updated_at = CURRENT_TIMESTAMP 
+         WHERE id = $2 
+         RETURNING user_id`,
+        [notes || 'Flagged for senior theological review', id]
+      );
+
+      if (updateRes.rows.length === 0) {
+        throw new Error('CONTENT_NOT_FOUND');
+      }
+
+      const userId = updateRes.rows[0].user_id;
+
+      await client.query(
+        `INSERT INTO moderation_reviews (id, content_type, content_id, user_id, status, notes, reviewed_by, reviewed_at)
+         VALUES ($1, $2, $3, $4, 'FLAGGED', $5, $6, CURRENT_TIMESTAMP)`,
+        [uuidv4(), contentType, id, userId, notes || 'Flagged for senior theological review', admin.id]
+      );
+
+      await client.query(
+        `INSERT INTO admin_notifications (id, type, title, message, target_type, target_id, is_read)
+         VALUES ($1, 'FLAGGED_CONTENT', 'Content Flagged for Senior Review', $2, $3, $4, FALSE)`,
+        [uuidv4(), `${admin.name} flagged ${contentType} #${id.slice(0, 8)} for senior theological review: ${notes}`, contentType, id]
+      );
+
+      await auditRepository.record(
+        {
+          adminId: admin.id,
+          adminName: admin.name,
+          adminEmail: admin.email,
+          action: 'FLAGGED_CONTENT',
+          targetType: contentType,
+          targetId: id,
+          reason: notes || 'Flagged for senior theological review',
+          ipAddress,
+          userAgent
+        },
+        client
+      );
+    });
+  }
+
   async removeContent(
     id: string,
     contentType: ContentType,

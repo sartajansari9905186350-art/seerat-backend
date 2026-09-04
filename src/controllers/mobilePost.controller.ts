@@ -3,6 +3,8 @@ import { v4 as uuidv4 } from 'uuid';
 import { withTransaction, query } from '../config/database';
 import { ResponseUtil } from '../utils/response';
 import { AuthenticatedUserRequest } from '../middleware/userAuth.middleware';
+import { aiModerationService } from '../services/aiModeration.service';
+
 
 export class MobilePostController {
   async createPost(req: AuthenticatedUserRequest, res: Response, next: NextFunction): Promise<void> {
@@ -64,6 +66,22 @@ export class MobilePostController {
           [userId]
         );
       });
+
+      // Perform AI Islamic content screening (advisory; strictly maintains PENDING_REVIEW)
+      let aiResult: any = null;
+      try {
+        aiResult = await aiModerationService.screenContent({
+          contentType: 'POST',
+          contentId: postId,
+          textContent,
+          arabicText,
+          translationText,
+          referenceSource,
+          mediaUrl
+        });
+      } catch (aiErr: any) {
+        // Fail-safe guarantee: failure to screen never impedes submission and never publishes
+      }
 
       // Fetch category name
       const catRes = await query('SELECT name FROM categories WHERE id = $1', [categoryId]);
