@@ -2,6 +2,7 @@ import { Response, NextFunction } from 'express';
 import { query } from '../config/database';
 import { ResponseUtil } from '../utils/response';
 import { AuthenticatedUserRequest } from '../middleware/userAuth.middleware';
+import { supabaseStorage } from '../services/supabaseStorage.service';
 
 export class MobileUserController {
   async getProfile(req: AuthenticatedUserRequest, res: Response, next: NextFunction): Promise<void> {
@@ -324,6 +325,99 @@ export class MobileUserController {
       ResponseUtil.success(res, list);
     } catch (err) {
       next(err);
+    }
+  }
+
+  async uploadPhoto(req: AuthenticatedUserRequest, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const user = req.user;
+      if (!user) {
+        ResponseUtil.error(res, 'UNAUTHORIZED', 'Authentication required.', 401);
+        return;
+      }
+
+      if (!req.file) {
+        ResponseUtil.error(res, 'NO_FILE', 'No photo file provided in request. Please include an image file under field name "photo".', 400);
+        return;
+      }
+
+      // Fetch existing photo to remove later
+      const existingRes = await query(`SELECT profile_photo FROM profiles WHERE user_id = $1`, [user.id]);
+      const oldPhoto = existingRes.rows[0]?.profile_photo;
+
+      // Upload to Supabase Storage
+      const newPhotoUrl = await supabaseStorage.uploadProfilePhoto(req.file, 'users', user.id);
+
+      // Update PostgreSQL profiles and users tables
+      await query(
+        `UPDATE profiles SET profile_photo = $1, updated_at = CURRENT_TIMESTAMP WHERE user_id = $2`,
+        [newPhotoUrl, user.id]
+      );
+      await query(
+        `UPDATE users SET profile_photo_url = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2`,
+        [newPhotoUrl, user.id]
+      );
+
+      // Clean up old image from storage if it belonged to Supabase
+      if (oldPhoto && oldPhoto !== newPhotoUrl) {
+        await supabaseStorage.deleteProfilePhoto(oldPhoto);
+      }
+
+      // Fetch updated profile
+      const updatedUserRes = await query(
+        `SELECT u.id, u.name, u.username, u.email, u.phone, u.is_verified, u.status, u.is_profile_completed,
+                p.bio, p.profile_photo, p.profile_photo as profile_photo_url, p.followers_count, p.following_count, p.posts_count, p.reels_count
+         FROM users u
+         LEFT JOIN profiles p ON u.id = p.user_id
+         WHERE u.id = $1`,
+        [user.id]
+      );
+
+      ResponseUtil.success(res, updatedUserRes.rows[0], 'Profile photo updated successfully.');
+    } catch (err: any) {
+      ResponseUtil.error(res, 'PHOTO_UPLOAD_FAILED', err.message || 'Failed to upload profile photo.', 400);
+    }
+  }
+
+  async removePhoto(req: AuthenticatedUserRequest, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const user = req.user;
+      if (!user) {
+        ResponseUtil.error(res, 'UNAUTHORIZED', 'Authentication required.', 401);
+        return;
+      }
+
+      const existingRes = await query(`SELECT profile_photo FROM profiles WHERE user_id = $1`, [user.id]);
+      const oldPhoto = existingRes.rows[0]?.profile_photo;
+
+      // Clear in PostgreSQL
+      await query(
+        `UPDATE profiles SET profile_photo = '', updated_at = CURRENT_TIMESTAMP WHERE user_id = $1`,
+        [user.id]
+      );
+      await query(
+        `UPDATE users SET profile_photo_url = '', updated_at = CURRENT_TIMESTAMP WHERE id = $1`,
+        [user.id]
+      );
+
+      // Remove from Supabase Storage
+      if (oldPhoto) {
+        await supabaseStorage.deleteProfilePhoto(oldPhoto);
+      }
+
+      // Fetch updated profile
+      const updatedUserRes = await query(
+        `SELECT u.id, u.name, u.username, u.email, u.phone, u.is_verified, u.status, u.is_profile_completed,
+                p.bio, p.profile_photo, p.profile_photo as profile_photo_url, p.followers_count, p.following_count, p.posts_count, p.reels_count
+         FROM users u
+         LEFT JOIN profiles p ON u.id = p.user_id
+         WHERE u.id = $1`,
+        [user.id]
+      );
+
+      ResponseUtil.success(res, updatedUserRes.rows[0], 'Profile photo removed successfully.');
+    } catch (err: any) {
+      ResponseUtil.error(res, 'PHOTO_REMOVE_FAILED', err.message || 'Failed to remove profile photo.', 400);
     }
   }
 }

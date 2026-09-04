@@ -15,5 +15,13 @@ export const env = {
   cdnBaseUrl: process.env.CDN_BASE_URL || 'https://cdn.seerat.app',
   maxFileSizeMb: parseInt(process.env.MAX_FILE_SIZE_MB || '50', 10),
   facebookAppId: process.env.FACEBOOK_APP_ID || '',
-  facebookAppSecret: process.env.FACEBOOK_APP_SECRET || ''
+  facebookAppSecret: process.env.FACEBOOK_APP_SECRET || '',
+  supabaseUrl: process.env.SUPABASE_URL || (() => {
+    // Attempt auto-discovery from Supabase DATABASE_URL if provided
+    const dbUrl = process.env.DATABASE_URL || '';
+    const match = dbUrl.match(/postgres\.([a-z0-9_-]+):/) || dbUrl.match(/@db\.([a-z0-9_-]+)\.supabase/);
+    return match ? `https://${match[1]}.supabase.co` : '';
+  })(),
+  supabaseServiceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY || '',
+  supabaseStorageBucket: process.env.SUPABASE_STORAGE_BUCKET || 'profile-photos'
 };

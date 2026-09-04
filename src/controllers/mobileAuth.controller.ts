@@ -527,6 +527,7 @@ export class MobileAuthController {
         phone: u.phone,
         bio: u.bio || '',
         profile_photo: u.profile_photo || '',
+        profile_photo_url: u.profile_photo || '',
         is_verified: u.is_verified || false,
         status: u.status,
         followers_count: u.followers_count || 0,
@@ -651,6 +652,5 @@ export class MobileAuthController {
     }
   }
 }
-
 
 export const mobileAuthController = new MobileAuthController();

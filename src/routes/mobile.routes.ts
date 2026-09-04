@@ -9,6 +9,7 @@ import { mobileReportController } from '../controllers/mobileReport.controller';
 import { mobileNotificationController } from '../controllers/mobileNotification.controller';
 import { mobileCategoryController } from '../controllers/mobileCategory.controller';
 import { authenticateUser, optionalUserAuth } from '../middleware/userAuth.middleware';
+import { handlePhotoUpload } from '../middleware/upload.middleware';
 
 export const mobileRouter = Router();
 
@@ -55,6 +56,9 @@ mobileRouter.post('/users/:userId/follow', authenticateUser, (req, res, next) =>
 // Profiles & Users
 mobileRouter.get('/users/profile/:userId', optionalUserAuth, (req, res, next) => mobileUserController.getProfile(req, res, next));
 mobileRouter.put('/users/profile', authenticateUser, (req, res, next) => mobileUserController.updateProfile(req, res, next));
+mobileRouter.post('/users/profile/photo', authenticateUser, handlePhotoUpload, (req, res, next) => mobileUserController.uploadPhoto(req, res, next));
+mobileRouter.put('/users/profile/photo', authenticateUser, handlePhotoUpload, (req, res, next) => mobileUserController.uploadPhoto(req, res, next));
+mobileRouter.delete('/users/profile/photo', authenticateUser, (req, res, next) => mobileUserController.removePhoto(req, res, next));
 mobileRouter.delete('/users/account', authenticateUser, (req, res, next) => mobileUserController.deleteAccount(req, res, next));
 mobileRouter.get('/users/:userId/posts', optionalUserAuth, (req, res, next) => mobileUserController.getUserPosts(req, res, next));
 mobileRouter.get('/users/:userId/reels', optionalUserAuth, (req, res, next) => mobileUserController.getUserReels(req, res, next));

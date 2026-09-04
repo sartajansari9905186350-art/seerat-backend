@@ -60,6 +60,8 @@ export class AuthService {
         role: admin.role,
         status: admin.status,
         avatarUrl: admin.avatar_url,
+        avatar_url: admin.avatar_url,
+        admin_profile_photo_url: admin.avatar_url,
         lastLoginAt: admin.last_login_at,
         createdAt: admin.created_at
       }
@@ -90,6 +92,8 @@ export class AuthService {
       role: admin.role,
       status: admin.status,
       avatarUrl: admin.avatar_url,
+      avatar_url: admin.avatar_url,
+      admin_profile_photo_url: admin.avatar_url,
       lastLoginAt: admin.last_login_at,
       createdAt: admin.created_at
     };

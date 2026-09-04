@@ -46,6 +46,27 @@ const checkAndInitSchema = async (): Promise<void> => {
       logger.warn('Could not ensure user provider and profile columns:', colErr.message);
     }
 
+    // Ensure profile photo columns exist across users, profiles, and admin_users
+    try {
+      await query(`ALTER TABLE profiles ADD COLUMN IF NOT EXISTS profile_photo VARCHAR(1024) DEFAULT '';`);
+      await query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS profile_photo_url VARCHAR(1024) DEFAULT '';`);
+      await query(`ALTER TABLE admin_users ADD COLUMN IF NOT EXISTS avatar_url VARCHAR(1024) DEFAULT '';`);
+      await query(`ALTER TABLE admin_users ADD COLUMN IF NOT EXISTS admin_profile_photo_url VARCHAR(1024) DEFAULT '';`);
+      await query(`
+        UPDATE users u
+        SET profile_photo_url = p.profile_photo
+        FROM profiles p
+        WHERE u.id = p.user_id AND (u.profile_photo_url IS NULL OR u.profile_photo_url = '') AND p.profile_photo IS NOT NULL AND p.profile_photo != '';
+      `);
+      await query(`
+        UPDATE admin_users
+        SET admin_profile_photo_url = avatar_url
+        WHERE (admin_profile_photo_url IS NULL OR admin_profile_photo_url = '') AND avatar_url IS NOT NULL AND avatar_url != '';
+      `);
+    } catch (photoColErr: any) {
+      logger.warn('Could not ensure profile photo columns:', photoColErr.message);
+    }
+
     // Ensure authorized Super Admin accounts exist, are active, and have valid bcrypt credentials
     try {
       const adminTableCheck = await query(`

@@ -21,6 +21,8 @@ export interface AdminProfileDTO {
   role: AdminRole;
   status: AdminStatus;
   avatarUrl?: string;
+  avatar_url?: string;
+  admin_profile_photo_url?: string;
   lastLoginAt?: Date;
   createdAt: Date;
 }
