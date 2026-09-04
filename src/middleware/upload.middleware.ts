@@ -5,7 +5,14 @@ import { ResponseUtil } from '../utils/response';
 // Keep uploaded files in memory buffer (ephemeral Render filesystem safety)
 const storage = multer.memoryStorage();
 
-const ALLOWED_MIMES = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
+const ALLOWED_MIMES = [
+  'image/jpeg',
+  'image/jpg',
+  'image/png',
+  'image/webp',
+  'image/pjpeg',
+  'image/x-png'
+];
 const MAX_SIZE = 5 * 1024 * 1024; // 5 MB
 
 export const uploadProfilePhotoMulter = multer({
@@ -14,13 +21,23 @@ export const uploadProfilePhotoMulter = multer({
     fileSize: MAX_SIZE
   },
   fileFilter: (req, file, cb) => {
-    if (ALLOWED_MIMES.includes(file.mimetype.toLowerCase())) {
+    const mime = (file.mimetype || '').toLowerCase();
+    const ext = (file.originalname || '').toLowerCase();
+    const hasValidExt = ['.jpg', '.jpeg', '.png', '.webp'].some(e => ext.endsWith(e));
+    const hasValidMime = ALLOWED_MIMES.some(m => mime.includes(m.replace('image/', '')));
+
+    if (hasValidMime || hasValidExt || mime.startsWith('image/')) {
       cb(null, true);
     } else {
       cb(new Error('INVALID_FILE_TYPE'));
     }
   }
-}).single('photo');
+}).fields([
+  { name: 'photo', maxCount: 1 },
+  { name: 'avatar', maxCount: 1 },
+  { name: 'image', maxCount: 1 },
+  { name: 'file', maxCount: 1 }
+]);
 
 export const handlePhotoUpload = (req: Request, res: Response, next: NextFunction) => {
   uploadProfilePhotoMulter(req, res, (err: any) => {
@@ -33,6 +50,13 @@ export const handlePhotoUpload = (req: Request, res: Response, next: NextFunctio
       }
       return ResponseUtil.error(res, 'UPLOAD_ERROR', err.message || 'File upload failed.', 400);
     }
+
+    // Normalize req.file from any of the allowed multipart field names
+    const files = req.files as { [fieldname: string]: Express.Multer.File[] } | undefined;
+    if (files) {
+      req.file = files['photo']?.[0] || files['avatar']?.[0] || files['image']?.[0] || files['file']?.[0];
+    }
+
     next();
   });
 };

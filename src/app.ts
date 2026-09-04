@@ -1,4 +1,5 @@
 import express, { Express } from 'express';
+import path from 'path';
 import cors from 'cors';
 import helmet from 'helmet';
 import morgan from 'morgan';
@@ -62,15 +63,49 @@ app.get('/api/health', async (req, res) => {
       // Table might not exist yet
     }
 
+    let dbHost = 'unknown';
+    try {
+      const parsed = new URL(process.env.DATABASE_URL || '');
+      dbHost = parsed.hostname;
+    } catch {}
+
     ResponseUtil.success(res, {
       status: 'healthy',
       database: 'connected',
+      db_host: dbHost,
       admins_count: adminsCount,
       admin_accounts: adminAccounts,
+      storage: {
+        has_supabase_url: !!process.env.SUPABASE_URL,
+        has_supabase_key: !!process.env.SUPABASE_SERVICE_ROLE_KEY,
+        supabase_url: env.supabaseUrl || 'not-set',
+        bucket: env.supabaseStorageBucket
+      },
       timestamp: new Date()
     });
   } catch (err: any) {
     ResponseUtil.error(res, 'DB_ERROR', 'Database connectivity error', 500, err.message);
+  }
+});
+
+// Public endpoint to serve uploaded profile photos (from persistent PostgreSQL storage)
+app.get('/api/uploads/profile-photos/:filename', async (req, res) => {
+  try {
+    const { filename } = req.params;
+    const cleanFilename = path.basename(filename);
+    const result = await query(
+      'SELECT mime_type, image_data FROM profile_photo_blobs WHERE filename = $1',
+      [cleanFilename]
+    );
+    if (!result.rows.length) {
+      return res.status(404).json({ success: false, message: 'Photo not found' });
+    }
+    const { mime_type, image_data } = result.rows[0];
+    res.set('Content-Type', mime_type || 'image/jpeg');
+    res.set('Cache-Control', 'public, max-age=86400, immutable');
+    res.send(image_data);
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: 'Error retrieving photo' });
   }
 });
 

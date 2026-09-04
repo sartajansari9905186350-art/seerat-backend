@@ -63,6 +63,18 @@ const checkAndInitSchema = async (): Promise<void> => {
         SET admin_profile_photo_url = avatar_url
         WHERE (admin_profile_photo_url IS NULL OR admin_profile_photo_url = '') AND avatar_url IS NOT NULL AND avatar_url != '';
       `);
+      await query(`
+        CREATE TABLE IF NOT EXISTS profile_photo_blobs (
+          id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+          entity_type VARCHAR(50) NOT NULL,
+          entity_id VARCHAR(100) NOT NULL,
+          filename VARCHAR(255) UNIQUE NOT NULL,
+          mime_type VARCHAR(100) NOT NULL,
+          image_data BYTEA NOT NULL,
+          created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE INDEX IF NOT EXISTS idx_profile_photo_blobs_filename ON profile_photo_blobs(filename);
+      `);
     } catch (photoColErr: any) {
       logger.warn('Could not ensure profile photo columns:', photoColErr.message);
     }
