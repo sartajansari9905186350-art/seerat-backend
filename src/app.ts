@@ -14,14 +14,18 @@ import { ResponseUtil } from './utils/response';
 
 const app: Express = express();
 
-// Security Headers
-app.use(helmet());
+// Security Headers - explicitly allow cross-origin media access
+app.use(helmet({
+  crossOriginResourcePolicy: { policy: 'cross-origin' },
+  crossOriginOpenerPolicy: { policy: 'same-origin-allow-popups' }
+}));
 
-// CORS Policy
+// CORS Policy with Range headers support
 app.use(cors({
   origin: env.corsOrigin === '*' ? true : env.corsOrigin.split(','),
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization']
+  allowedHeaders: ['Content-Type', 'Authorization', 'Range', 'X-Requested-With'],
+  exposedHeaders: ['Content-Range', 'Accept-Ranges', 'Content-Length']
 }));
 
 // Request Logging
@@ -162,6 +166,8 @@ app.get('/api/uploads/videos/:filename', async (req, res) => {
 
       res.status(206);
       res.set({
+        'Access-Control-Allow-Origin': '*',
+        'Cross-Origin-Resource-Policy': 'cross-origin',
         'Content-Range': `bytes ${start}-${end}/${totalSize}`,
         'Accept-Ranges': 'bytes',
         'Content-Length': chunk.length.toString(),
@@ -182,6 +188,8 @@ app.get('/api/uploads/videos/:filename', async (req, res) => {
 
       res.status(200);
       res.set({
+        'Access-Control-Allow-Origin': '*',
+        'Cross-Origin-Resource-Policy': 'cross-origin',
         'Content-Length': totalSize.toString(),
         'Content-Type': mimeType,
         'Accept-Ranges': 'bytes',
