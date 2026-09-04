@@ -74,9 +74,20 @@ const checkAndInitSchema = async (): Promise<void> => {
           created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
         );
         CREATE INDEX IF NOT EXISTS idx_profile_photo_blobs_filename ON profile_photo_blobs(filename);
+
+        CREATE TABLE IF NOT EXISTS video_blobs (
+          id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+          filename VARCHAR(255) UNIQUE NOT NULL,
+          mime_type VARCHAR(100) NOT NULL DEFAULT 'video/mp4',
+          file_size BIGINT NOT NULL,
+          video_data BYTEA NOT NULL,
+          created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE INDEX IF NOT EXISTS idx_video_blobs_filename ON video_blobs(filename);
       `);
+      logger.info('Persistent blob storage tables verified.');
     } catch (photoColErr: any) {
-      logger.warn('Could not ensure profile photo columns:', photoColErr.message);
+      logger.warn('Could not ensure blob tables:', photoColErr.message);
     }
 
     // Ensure AI Islamic Content Moderation columns exist across posts, reels, and moderation_reviews

@@ -109,6 +109,92 @@ app.get('/api/uploads/profile-photos/:filename', async (req, res) => {
   }
 });
 
+// Public endpoint for video streaming with full HTTP Range (206 Partial Content) support
+app.get('/api/uploads/videos/:filename', async (req, res) => {
+  try {
+    const { filename } = req.params;
+    const cleanFilename = path.basename(filename);
+
+    const metaResult = await query(
+      'SELECT file_size, mime_type FROM video_blobs WHERE filename = $1',
+      [cleanFilename]
+    );
+
+    if (!metaResult.rows.length) {
+      return res.status(404).json({ success: false, message: 'Video file not found' });
+    }
+
+    const totalSize = parseInt(metaResult.rows[0].file_size, 10);
+    const mimeType = metaResult.rows[0].mime_type || 'video/mp4';
+
+    const range = req.headers.range;
+
+    if (range) {
+      // Byte Range Request (ExoPlayer & HTML5 video seek/stream)
+      const parts = range.replace(/bytes=/, '').split('-');
+      const start = parseInt(parts[0], 10);
+
+      // Default chunk size is 2MB or remaining file size
+      let end = parts[1] ? parseInt(parts[1], 10) : Math.min(start + (2 * 1024 * 1024) - 1, totalSize - 1);
+      if (end >= totalSize) {
+        end = totalSize - 1;
+      }
+
+      if (isNaN(start) || start >= totalSize || start < 0 || start > end) {
+        res.status(416).set('Content-Range', `bytes */${totalSize}`).send();
+        return;
+      }
+
+      const chunkSize = (end - start) + 1;
+      // PostgreSQL substring is 1-indexed
+      const sqlStart = start + 1;
+
+      const chunkResult = await query(
+        'SELECT substring(video_data FROM $1 FOR $2) as chunk FROM video_blobs WHERE filename = $3',
+        [sqlStart, chunkSize, cleanFilename]
+      );
+
+      if (!chunkResult.rows.length || !chunkResult.rows[0].chunk) {
+        return res.status(404).json({ success: false, message: 'Video chunk not found' });
+      }
+
+      const chunk = chunkResult.rows[0].chunk;
+
+      res.status(206);
+      res.set({
+        'Content-Range': `bytes ${start}-${end}/${totalSize}`,
+        'Accept-Ranges': 'bytes',
+        'Content-Length': chunk.length.toString(),
+        'Content-Type': mimeType,
+        'Cache-Control': 'public, max-age=31536000, immutable'
+      });
+      res.send(chunk);
+    } else {
+      // Full Video Request
+      const fullResult = await query(
+        'SELECT video_data FROM video_blobs WHERE filename = $1',
+        [cleanFilename]
+      );
+
+      if (!fullResult.rows.length) {
+        return res.status(404).json({ success: false, message: 'Video not found' });
+      }
+
+      res.status(200);
+      res.set({
+        'Content-Length': totalSize.toString(),
+        'Content-Type': mimeType,
+        'Accept-Ranges': 'bytes',
+        'Cache-Control': 'public, max-age=31536000, immutable'
+      });
+      res.send(fullResult.rows[0].video_data);
+    }
+  } catch (err: any) {
+    logger.error(`Error streaming video ${req.params.filename}:`, err.message);
+    res.status(500).json({ success: false, message: 'Error streaming video' });
+  }
+});
+
 // Mount Admin REST API
 app.use('/api/admin', adminRouter);
 

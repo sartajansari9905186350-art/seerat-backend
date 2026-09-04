@@ -4,9 +4,41 @@ import { withTransaction, query } from '../config/database';
 import { ResponseUtil } from '../utils/response';
 import { AuthenticatedUserRequest } from '../middleware/userAuth.middleware';
 import { aiModerationService } from '../services/aiModeration.service';
+import { videoStorage } from '../services/videoStorage.service';
 
 
 export class MobileReelController {
+  async uploadVideo(req: AuthenticatedUserRequest, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const user = req.user;
+      if (!user) {
+        ResponseUtil.error(res, 'UNAUTHORIZED', 'Authentication required.', 401);
+        return;
+      }
+
+      if (!req.file) {
+        ResponseUtil.error(res, 'VALIDATION_ERROR', 'Please provide a valid video file under multipart field "video" or "reel".', 400);
+        return;
+      }
+
+      const uploadResult = await videoStorage.uploadVideo(req.file, user.id);
+
+      ResponseUtil.success(
+        res,
+        {
+          video_url: uploadResult.videoUrl,
+          filename: uploadResult.filename,
+          file_size: uploadResult.fileSize,
+          mime_type: uploadResult.mimeType
+        },
+        'Video uploaded successfully.',
+        201
+      );
+    } catch (err: any) {
+      ResponseUtil.error(res, 'VIDEO_UPLOAD_FAILED', err.message || 'Failed to upload video.', 400);
+    }
+  }
+
   async getForYouReels(req: AuthenticatedUserRequest, res: Response, next: NextFunction): Promise<void> {
     try {
       const { page = '1', limit = '10' } = req.query;
@@ -55,8 +87,8 @@ export class MobileReelController {
         },
         category_id: r.category_id,
         category_name: r.category_name || 'Quran',
-        video_url: r.video_url || 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4',
-        thumbnail_url: r.thumbnail_url || 'https://images.unsplash.com/photo-1542816417-0983c9c9ad53?w=600',
+        video_url: r.video_url || '',
+        thumbnail_url: r.thumbnail_url || r.video_url || '',
         caption: r.caption || '',
         audio_title: r.audio_title || 'Original Islamic Audio',
         audio_artist: r.audio_artist || 'SEERAT Creator',
@@ -128,8 +160,8 @@ export class MobileReelController {
         },
         category_id: r.category_id,
         category_name: r.category_name || 'Quran',
-        video_url: r.video_url || 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4',
-        thumbnail_url: r.thumbnail_url || 'https://images.unsplash.com/photo-1542816417-0983c9c9ad53?w=600',
+        video_url: r.video_url || '',
+        thumbnail_url: r.thumbnail_url || r.video_url || '',
         caption: r.caption || '',
         audio_title: r.audio_title || 'Original Islamic Audio',
         audio_artist: r.audio_artist || 'SEERAT Creator',
@@ -167,8 +199,19 @@ export class MobileReelController {
         language = 'en'
       } = req.body;
 
-      if (!videoUrl) {
+      if (!videoUrl || typeof videoUrl !== 'string' || !videoUrl.trim()) {
         ResponseUtil.error(res, 'VALIDATION_ERROR', 'Video URL is required for Reel submission.', 400);
+        return;
+      }
+
+      // Disallow raw device picker URIs
+      if (videoUrl.startsWith('content://') || videoUrl.startsWith('file://')) {
+        ResponseUtil.error(
+          res,
+          'VALIDATION_ERROR',
+          'Local device URIs cannot be used directly. Please upload the video first using /api/reels/upload.',
+          400
+        );
         return;
       }
 
