@@ -4,9 +4,73 @@ import { withTransaction, query } from '../config/database';
 import { ResponseUtil } from '../utils/response';
 import { AuthenticatedUserRequest } from '../middleware/userAuth.middleware';
 import { aiModerationService } from '../services/aiModeration.service';
-
+import { supabaseStorage } from '../services/supabaseStorage.service';
+import { videoStorage } from '../services/videoStorage.service';
 
 export class MobilePostController {
+  async uploadPhoto(req: AuthenticatedUserRequest, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const user = req.user;
+      if (!user) {
+        ResponseUtil.error(res, 'UNAUTHORIZED', 'Authentication required.', 401);
+        return;
+      }
+
+      if (!req.file) {
+        ResponseUtil.error(res, 'VALIDATION_ERROR', 'Please provide an image file under multipart field "photo" or "image".', 400);
+        return;
+      }
+
+      const publicUrl = await supabaseStorage.uploadProfilePhoto(req.file, 'posts' as any, user.id);
+
+      ResponseUtil.success(
+        res,
+        {
+          media_url: publicUrl,
+          photo_url: publicUrl,
+          media_type: 'PHOTO'
+        },
+        'Photo uploaded successfully.',
+        201
+      );
+    } catch (err: any) {
+      ResponseUtil.error(res, 'PHOTO_UPLOAD_FAILED', err.message || 'Failed to upload photo.', 400);
+    }
+  }
+
+  async uploadVideo(req: AuthenticatedUserRequest, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const user = req.user;
+      if (!user) {
+        ResponseUtil.error(res, 'UNAUTHORIZED', 'Authentication required.', 401);
+        return;
+      }
+
+      if (!req.file) {
+        ResponseUtil.error(res, 'VALIDATION_ERROR', 'Please provide a video file under multipart field "video" or "media".', 400);
+        return;
+      }
+
+      const uploadResult = await videoStorage.uploadVideo(req.file, user.id);
+
+      ResponseUtil.success(
+        res,
+        {
+          media_url: uploadResult.videoUrl,
+          video_url: uploadResult.videoUrl,
+          filename: uploadResult.filename,
+          file_size: uploadResult.fileSize,
+          mime_type: uploadResult.mimeType,
+          media_type: 'VIDEO'
+        },
+        'Video uploaded successfully.',
+        201
+      );
+    } catch (err: any) {
+      ResponseUtil.error(res, 'VIDEO_UPLOAD_FAILED', err.message || 'Failed to upload video.', 400);
+    }
+  }
+
   async createPost(req: AuthenticatedUserRequest, res: Response, next: NextFunction): Promise<void> {
     try {
       const userId = req.user!.id;
@@ -23,6 +87,17 @@ export class MobilePostController {
 
       if (!textContent && !arabicText && !translationText && !mediaUrl) {
         ResponseUtil.error(res, 'VALIDATION_ERROR', 'Please provide post text, Islamic verse/hadith, or media.', 400);
+        return;
+      }
+
+      // Disallow raw device local URIs
+      if (typeof mediaUrl === 'string' && (mediaUrl.startsWith('content://') || mediaUrl.startsWith('file://'))) {
+        ResponseUtil.error(
+          res,
+          'VALIDATION_ERROR',
+          'Local device URIs cannot be used directly. Please upload the media file first.',
+          400
+        );
         return;
       }
 

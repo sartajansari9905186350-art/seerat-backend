@@ -356,6 +356,147 @@ export class MobileSocialController {
       next(err);
     }
   }
+
+  async getSavedPosts(req: AuthenticatedUserRequest, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const userId = req.user!.id;
+
+      const sql = `
+        SELECT p.id, p.user_id, p.category_id, p.content_type, p.text_content,
+               p.arabic_text, p.translation_text, p.reference_source, p.language, p.status,
+               p.likes_count, p.comments_count, p.shares_count, p.saves_count, p.views_count,
+               p.created_at,
+               c.name as category_name,
+               m.url as media_url, m.thumbnail_url,
+               u.id as creator_id, u.name as creator_name, u.username as creator_username,
+               u.is_verified as creator_verified, prof.profile_photo as creator_photo,
+               (l.id IS NOT NULL) as is_liked,
+               TRUE as is_saved,
+               (f.id IS NOT NULL) as is_following
+        FROM saves s
+        JOIN posts p ON s.post_id = p.id
+        JOIN users u ON p.user_id = u.id
+        LEFT JOIN profiles prof ON u.id = prof.user_id
+        LEFT JOIN categories c ON p.category_id = c.id
+        LEFT JOIN media m ON p.media_id = m.id
+        LEFT JOIN likes l ON l.post_id = p.id AND l.user_id = $1
+        LEFT JOIN follows f ON f.follower_id = $1 AND f.following_id = p.user_id
+        WHERE s.user_id = $1 AND p.status = 'APPROVED'
+        ORDER BY s.created_at DESC
+      `;
+
+      const result = await query(sql, [userId]);
+
+      const formatted = result.rows.map(r => ({
+        id: r.id,
+        user_id: r.user_id,
+        user: {
+          id: r.creator_id,
+          name: r.creator_name,
+          username: r.creator_username,
+          profile_photo: r.creator_photo || '',
+          is_verified: r.creator_verified || false,
+          is_following: r.is_following || false
+        },
+        category_id: r.category_id,
+        category_name: r.category_name || 'All',
+        content_type: r.content_type,
+        text_content: r.text_content || '',
+        arabic_text: r.arabic_text || '',
+        translation_text: r.translation_text || '',
+        reference_source: r.reference_source || '',
+        media_url: r.media_url,
+        thumbnail_url: r.thumbnail_url,
+        language: r.language || 'en',
+        status: r.status,
+        likes_count: parseInt(r.likes_count || '0', 10),
+        comments_count: parseInt(r.comments_count || '0', 10),
+        shares_count: parseInt(r.shares_count || '0', 10),
+        saves_count: parseInt(r.saves_count || '0', 10),
+        views_count: parseInt(r.views_count || '0', 10),
+        is_liked: r.is_liked || false,
+        is_saved: true,
+        is_following: r.is_following || false,
+        created_at: new Date(r.created_at).toLocaleDateString()
+      }));
+
+      ResponseUtil.success(res, formatted);
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  async getSavedReels(req: AuthenticatedUserRequest, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const userId = req.user!.id;
+
+      const sql = `
+        SELECT r.id, r.user_id, r.category_id, r.caption, r.reference_source, r.language,
+               r.audio_title, r.audio_artist, m.duration as duration_seconds, r.status,
+               r.likes_count, r.comments_count, r.shares_count, r.saves_count, r.views_count,
+               r.created_at,
+               c.name as category_name,
+               m.url as video_url, m.thumbnail_url,
+               u.id as creator_id, u.name as creator_name, u.username as creator_username,
+               u.is_verified as creator_verified, prof.profile_photo as creator_photo,
+               (l.id IS NOT NULL) as is_liked,
+               TRUE as is_saved,
+               (f.id IS NOT NULL) as is_following
+        FROM saves s
+        JOIN reels r ON s.reel_id = r.id
+        JOIN users u ON r.user_id = u.id
+        LEFT JOIN profiles prof ON u.id = prof.user_id
+        LEFT JOIN categories c ON r.category_id = c.id
+        LEFT JOIN media m ON r.media_id = m.id
+        LEFT JOIN likes l ON l.reel_id = r.id AND l.user_id = $1
+        LEFT JOIN follows f ON f.follower_id = $1 AND f.following_id = r.user_id
+        WHERE s.user_id = $1 AND r.status = 'APPROVED'
+        ORDER BY s.created_at DESC
+      `;
+
+      const result = await query(sql, [userId]);
+
+      const formatted = result.rows.map(r => ({
+        id: r.id,
+        user_id: r.user_id,
+        user: {
+          id: r.creator_id,
+          name: r.creator_name,
+          username: r.creator_username,
+          profile_photo: r.creator_photo || '',
+          is_verified: r.creator_verified || false,
+          is_following: r.is_following || false
+        },
+        category_id: r.category_id,
+        category_name: r.category_name || 'Quran',
+        video_url: r.video_url || '',
+        thumbnail_url: r.thumbnail_url || r.video_url || '',
+        caption: r.caption || '',
+        audio_title: r.audio_title || 'Original Islamic Audio',
+        audio_artist: r.audio_artist || 'SEERAT Creator',
+        reference_source: r.reference_source || '',
+        language: r.language || 'en',
+        status: r.status,
+        likes_count: parseInt(r.likes_count || '0', 10),
+        comments_count: parseInt(r.comments_count || '0', 10),
+        shares_count: parseInt(r.shares_count || '0', 10),
+        saves_count: parseInt(r.saves_count || '0', 10),
+        views_count: parseInt(r.views_count || '0', 10),
+        is_liked: r.is_liked || false,
+        is_saved: true,
+        is_following: r.is_following || false,
+        created_at: new Date(r.created_at).toLocaleDateString()
+      }));
+
+      ResponseUtil.success(res, formatted);
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  async getSavedItems(req: AuthenticatedUserRequest, res: Response, next: NextFunction): Promise<void> {
+    return this.getSavedPosts(req, res, next);
+  }
 }
 
 export const mobileSocialController = new MobileSocialController();

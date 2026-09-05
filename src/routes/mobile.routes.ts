@@ -31,7 +31,9 @@ mobileRouter.get('/categories', (req, res, next) => mobileCategoryController.get
 mobileRouter.get('/feed', optionalUserAuth, (req, res, next) => mobileFeedController.getFeed(req, res, next));
 mobileRouter.get('/feed/following', authenticateUser, (req, res, next) => mobileFeedController.getFollowingFeed(req, res, next));
 
-// Posts (Create, Delete)
+// Posts (Create, Upload Media, Delete)
+mobileRouter.post('/posts/upload-photo', authenticateUser, handlePhotoUpload, (req, res, next) => mobilePostController.uploadPhoto(req, res, next));
+mobileRouter.post('/posts/upload-video', authenticateUser, handleVideoUpload, (req, res, next) => mobilePostController.uploadVideo(req, res, next));
 mobileRouter.post('/posts', authenticateUser, (req, res, next) => mobilePostController.createPost(req, res, next));
 mobileRouter.delete('/posts/:postId', authenticateUser, (req, res, next) => mobilePostController.deletePost(req, res, next));
 
@@ -53,6 +55,9 @@ mobileRouter.post('/likes/post/:postId', authenticateUser, (req, res, next) => m
 mobileRouter.post('/likes/reel/:reelId', authenticateUser, (req, res, next) => mobileSocialController.toggleLikeReel(req, res, next));
 mobileRouter.post('/saves/post/:postId', authenticateUser, (req, res, next) => mobileSocialController.toggleSavePost(req, res, next));
 mobileRouter.post('/saves/reel/:reelId', authenticateUser, (req, res, next) => mobileSocialController.toggleSaveReel(req, res, next));
+mobileRouter.get('/saves/posts', authenticateUser, (req, res, next) => mobileSocialController.getSavedPosts(req, res, next));
+mobileRouter.get('/saves/reels', authenticateUser, (req, res, next) => mobileSocialController.getSavedReels(req, res, next));
+mobileRouter.get('/saves', authenticateUser, (req, res, next) => mobileSocialController.getSavedItems(req, res, next));
 mobileRouter.post('/users/:userId/follow', authenticateUser, (req, res, next) => mobileSocialController.toggleFollow(req, res, next));
 
 // Profiles & Users

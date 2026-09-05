@@ -55,7 +55,7 @@ export class MobileAuthController {
 
         await client.query(
           `INSERT INTO profiles (user_id, bio, profile_photo)
-           VALUES ($1, 'Seeker of beneficial Islamic knowledge.', 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=300')`,
+           VALUES ($1, 'Seeker of beneficial Islamic knowledge.', '')`,
           [newUserId]
         );
       });
@@ -76,7 +76,7 @@ export class MobileAuthController {
         email: cleanEmail,
         phone: phone ? phone.trim() : null,
         bio: 'Seeker of beneficial Islamic knowledge.',
-        profile_photo: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=300',
+        profile_photo: '',
         is_verified: false,
         status: 'ACTIVE',
         followers_count: 0,
@@ -296,7 +296,7 @@ export class MobileAuthController {
           .replace(/[^a-z0-9_]/g, '_');
         const cleanUsername = `${baseUsername.slice(0, 20)}_${Math.floor(Math.random() * 1000)}`;
         const randomPassHash = await bcrypt.hash(uuidv4(), 10);
-        const photo = verifiedPhoto || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=300';
+        const photo = verifiedPhoto || '';
 
         await withTransaction(async (client) => {
           await client.query(
@@ -423,7 +423,7 @@ export class MobileAuthController {
         const baseUsername = cleanEmail.split('@')[0].toLowerCase().replace(/[^a-z0-9_]/g, '_');
         const cleanUsername = `${baseUsername.slice(0, 20)}_${Math.floor(Math.random() * 1000)}`;
         const randomPassHash = await bcrypt.hash(uuidv4(), 10);
-        const photo = effectivePhoto || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=300';
+        const photo = effectivePhoto || '';
 
         await withTransaction(async (client) => {
           await client.query(
