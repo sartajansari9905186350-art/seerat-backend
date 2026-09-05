@@ -138,8 +138,13 @@ app.get('/api/uploads/videos/:filename', async (req, res) => {
       const parts = range.replace(/bytes=/, '').split('-');
       const start = parseInt(parts[0], 10);
 
-      // Default chunk size is 2MB or remaining file size
-      let end = parts[1] ? parseInt(parts[1], 10) : Math.min(start + (2 * 1024 * 1024) - 1, totalSize - 1);
+      // If client specified an explicit end, use it; otherwise stream to end of file
+      let end: number;
+      if (parts[1] && parts[1].trim() !== '') {
+        end = parseInt(parts[1], 10);
+      } else {
+        end = totalSize - 1;
+      }
       if (end >= totalSize) {
         end = totalSize - 1;
       }
@@ -149,20 +154,7 @@ app.get('/api/uploads/videos/:filename', async (req, res) => {
         return;
       }
 
-      const chunkSize = (end - start) + 1;
-      // PostgreSQL substring is 1-indexed
-      const sqlStart = start + 1;
-
-      const chunkResult = await query(
-        'SELECT substring(video_data FROM $1 FOR $2) as chunk FROM video_blobs WHERE filename = $3',
-        [sqlStart, chunkSize, cleanFilename]
-      );
-
-      if (!chunkResult.rows.length || !chunkResult.rows[0].chunk) {
-        return res.status(404).json({ success: false, message: 'Video chunk not found' });
-      }
-
-      const chunk = chunkResult.rows[0].chunk;
+      const totalBytesToSend = (end - start) + 1;
 
       res.status(206);
       res.set({
@@ -170,11 +162,47 @@ app.get('/api/uploads/videos/:filename', async (req, res) => {
         'Cross-Origin-Resource-Policy': 'cross-origin',
         'Content-Range': `bytes ${start}-${end}/${totalSize}`,
         'Accept-Ranges': 'bytes',
-        'Content-Length': chunk.length.toString(),
+        'Content-Length': totalBytesToSend.toString(),
         'Content-Type': mimeType,
         'Cache-Control': 'public, max-age=31536000, immutable'
       });
-      res.send(chunk);
+
+      // Stream in 1MB chunks to keep memory usage low while streaming complete range
+      const CHUNK_SIZE = 1024 * 1024; // 1 MB
+      let current = start;
+      let isAborted = false;
+
+      req.on('close', () => {
+        isAborted = true;
+      });
+
+      while (current <= end && !isAborted && !res.writableEnded) {
+        const nextLen = Math.min(CHUNK_SIZE, (end - current) + 1);
+        const sqlStart = current + 1; // PostgreSQL substring is 1-indexed
+
+        const chunkResult = await query(
+          'SELECT substring(video_data FROM $1 FOR $2) as chunk FROM video_blobs WHERE filename = $3',
+          [sqlStart, nextLen, cleanFilename]
+        );
+
+        if (!chunkResult.rows.length || !chunkResult.rows[0].chunk) {
+          break;
+        }
+
+        const chunk = chunkResult.rows[0].chunk;
+        const canContinue = res.write(chunk);
+        if (!canContinue && !isAborted) {
+          await new Promise<void>((resolve) => {
+            res.once('drain', () => resolve());
+            req.once('close', () => resolve());
+          });
+        }
+        current += nextLen;
+      }
+
+      if (!res.writableEnded) {
+        res.end();
+      }
     } else {
       // Full Video Request
       const fullResult = await query(
