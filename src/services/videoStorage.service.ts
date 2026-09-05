@@ -7,15 +7,17 @@ import { query } from '../config/database';
 
 const ALLOWED_VIDEO_MIME_TYPES = [
   'video/mp4',
-  'video/quicktime', // MOV
-  'video/x-matroska', // MKV
+  'video/quicktime',
+  'video/x-matroska',
   'video/webm',
   'video/3gpp',
   'video/avi',
-  'video/x-msvideo'
+  'video/x-msvideo',
+  'video/x-m4v',
+  'video/m4v'
 ];
 
-const ALLOWED_VIDEO_EXTENSIONS = ['.mp4', '.mov', '.mkv', '.webm', '.3gp', '.avi'];
+const ALLOWED_VIDEO_EXTENSIONS = ['.mp4', '.mov', '.mkv', '.webm', '.3gp', '.avi', '.m4v'];
 const MAX_VIDEO_SIZE_BYTES = (env.maxFileSizeMb || 50) * 1024 * 1024; // 50 MB
 
 export interface VideoValidationResult {
@@ -70,12 +72,18 @@ export class VideoStorageService {
     let detectedMime = '';
     let detectedExt = '';
 
-    // Check for MP4 / MOV ftyp box (bytes 4..7 === 'ftyp')
+    const rawMime = (file.mimetype || '').toLowerCase();
+    const rawExt = path.extname(file.originalname || '').toLowerCase();
+
+    // Check for MP4 / MOV / M4V ftyp box (bytes 4..7 === 'ftyp')
     if (buf.length >= 8 && buf.toString('ascii', 4, 8) === 'ftyp') {
       const brand = buf.length >= 12 ? buf.toString('ascii', 8, 12) : '';
       if (brand.startsWith('qt')) {
         detectedMime = 'video/quicktime';
         detectedExt = '.mov';
+      } else if (rawExt === '.m4v' || brand.toLowerCase().includes('m4v')) {
+        detectedMime = 'video/x-m4v';
+        detectedExt = '.m4v';
       } else {
         detectedMime = 'video/mp4';
         detectedExt = '.mp4';
@@ -89,16 +97,13 @@ export class VideoStorageService {
       detectedExt = '.avi';
     }
 
-    const rawMime = (file.mimetype || '').toLowerCase();
-    const rawExt = path.extname(file.originalname || '').toLowerCase();
-
     const isMimeAllowed = ALLOWED_VIDEO_MIME_TYPES.some(m => rawMime.includes(m.replace('video/', '')));
     const isExtAllowed = ALLOWED_VIDEO_EXTENSIONS.includes(rawExt);
 
     if (!detectedMime && !isMimeAllowed && !isExtAllowed) {
       return {
         valid: false,
-        error: 'Unsupported video format. Please upload an authentic MP4, MOV, or WEBM video.',
+        error: 'Unsupported video format. Please upload an authentic MP4, MOV, M4V, or WEBM video.',
         extension: '',
         mimeType: ''
       };

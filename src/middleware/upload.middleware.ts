@@ -69,7 +69,9 @@ const ALLOWED_VIDEO_MIMES = [
   'video/webm',
   'video/3gpp',
   'video/avi',
-  'video/x-msvideo'
+  'video/x-msvideo',
+  'video/x-m4v',
+  'video/m4v'
 ];
 
 export const uploadVideoMulter = multer({
@@ -80,7 +82,7 @@ export const uploadVideoMulter = multer({
   fileFilter: (req, file, cb) => {
     const mime = (file.mimetype || '').toLowerCase();
     const ext = (file.originalname || '').toLowerCase();
-    const hasValidExt = ['.mp4', '.mov', '.mkv', '.webm', '.3gp', '.avi'].some(e => ext.endsWith(e));
+    const hasValidExt = ['.mp4', '.mov', '.mkv', '.webm', '.3gp', '.avi', '.m4v'].some(e => ext.endsWith(e));
     const hasValidMime = ALLOWED_VIDEO_MIMES.some(m => mime.includes(m.replace('video/', '')));
 
     if (hasValidMime || hasValidExt || mime.startsWith('video/')) {
@@ -103,7 +105,7 @@ export const handleVideoUpload = (req: Request, res: Response, next: NextFunctio
         return ResponseUtil.error(res, 'FILE_TOO_LARGE', 'Video exceeds maximum allowed size of 50 MB.', 400);
       }
       if (err.message === 'INVALID_VIDEO_TYPE') {
-        return ResponseUtil.error(res, 'INVALID_VIDEO_TYPE', 'Unsupported video format. Please upload an authentic MP4, MOV, or WEBM video.', 400);
+        return ResponseUtil.error(res, 'INVALID_VIDEO_TYPE', 'Unsupported video format. Please upload an authentic MP4, MOV, M4V, or WEBM video.', 400);
       }
       return ResponseUtil.error(res, 'UPLOAD_ERROR', err.message || 'Video upload failed.', 400);
     }
