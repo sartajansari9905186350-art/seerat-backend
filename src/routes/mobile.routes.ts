@@ -44,6 +44,7 @@ mobileRouter.post('/reels/upload', authenticateUser, handleVideoUpload, (req, re
 mobileRouter.post('/reels', authenticateUser, (req, res, next) => mobileReelController.createReel(req, res, next));
 mobileRouter.delete('/reels/:reelId', authenticateUser, (req, res, next) => mobileReelController.deleteReel(req, res, next));
 mobileRouter.post('/reels/:reelId/view', optionalUserAuth, (req, res, next) => mobileReelController.recordReelView(req, res, next));
+mobileRouter.post('/reels/:reelId/not-interested', authenticateUser, (req, res, next) => mobileReelController.markNotInterested(req, res, next));
 
 // Comments
 mobileRouter.get('/comments', optionalUserAuth, (req, res, next) => mobileSocialController.getComments(req, res, next));

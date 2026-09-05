@@ -115,7 +115,7 @@ export class MobileAuthController {
       const searchKey = emailOrPhone.toLowerCase().trim();
 
       const userRes = await query(
-        `SELECT u.id, u.name, u.username, u.email, u.phone, u.password_hash, u.is_verified, u.status, u.suspension_reason, u.is_profile_completed,
+        `SELECT u.id, u.name, u.username, u.email, u.phone, u.password_hash, u.is_verified, u.status, u.suspension_reason, u.suspended_until, u.is_profile_completed,
                 p.bio, p.profile_photo, p.followers_count, p.following_count, p.posts_count, p.reels_count
          FROM users u
          LEFT JOIN profiles p ON u.id = p.user_id
@@ -131,17 +131,32 @@ export class MobileAuthController {
       const user = userRes.rows[0];
 
       if (user.status === 'SUSPENDED') {
-        ResponseUtil.error(
-          res,
-          'ACCOUNT_SUSPENDED',
-          `Your account is suspended: ${user.suspension_reason || 'Violation of Islamic guidelines.'}`,
-          403
-        );
-        return;
+        const now = new Date();
+        if (user.suspended_until && now >= new Date(user.suspended_until)) {
+          // Suspension expired! Auto-restore to ACTIVE
+          await query(
+            `UPDATE users 
+             SET status = 'ACTIVE', suspension_reason = NULL, suspended_at = NULL, suspended_until = NULL, suspended_by = NULL, updated_at = CURRENT_TIMESTAMP 
+             WHERE id = $1`,
+            [user.id]
+          );
+          await query(`UPDATE posts SET status = 'APPROVED' WHERE user_id = $1 AND status = 'SUSPENDED'`, [user.id]);
+          await query(`UPDATE reels SET status = 'APPROVED' WHERE user_id = $1 AND status = 'SUSPENDED'`, [user.id]);
+          user.status = 'ACTIVE';
+        } else {
+          const untilMsg = user.suspended_until ? ` until ${new Date(user.suspended_until).toUTCString()}` : '';
+          ResponseUtil.error(
+            res,
+            'ACCOUNT_SUSPENDED',
+            `Your account is temporarily suspended${untilMsg}. Reason: ${user.suspension_reason || 'Violation of Islamic guidelines.'}`,
+            403
+          );
+          return;
+        }
       }
 
-      if (user.status === 'DISABLED') {
-        ResponseUtil.error(res, 'ACCOUNT_DISABLED', 'Your account has been deactivated.', 403);
+      if (user.status === 'BANNED' || user.status === 'DISABLED') {
+        ResponseUtil.error(res, 'ACCOUNT_BANNED', 'Your account has been permanently banned from SEERAT.', 403);
         return;
       }
 

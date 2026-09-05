@@ -8,6 +8,7 @@ const router = Router();
 router.use(authenticateAdmin);
 
 router.get('/', reviewController.getQueue);
+router.post('/bulk', reviewController.bulk);
 router.post('/:id/approve', validateBody(approveContentSchema), reviewController.approve);
 router.post('/:id/reject', validateBody(rejectContentSchema), reviewController.reject);
 router.post('/:id/flag', validateBody(flagContentSchema), reviewController.flag);

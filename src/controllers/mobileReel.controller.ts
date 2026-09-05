@@ -68,6 +68,7 @@ export class MobileReelController {
         LEFT JOIN saves s ON s.reel_id = r.id AND s.user_id = $1
         LEFT JOIN follows f ON f.follower_id = $1 AND f.following_id = r.user_id
         WHERE r.status = 'APPROVED'
+          AND ($1 = '00000000-0000-0000-0000-000000000000' OR r.id NOT IN (SELECT reel_id FROM not_interested_reels WHERE user_id = $1))
         ORDER BY r.created_at DESC
         LIMIT $2 OFFSET $3
       `;
@@ -351,6 +352,32 @@ export class MobileReelController {
       });
 
       ResponseUtil.success(res, { id: reelId, status: 'REMOVED' }, 'Reel deleted successfully.');
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  async markNotInterested(req: AuthenticatedUserRequest, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const user = req.user;
+      if (!user) {
+        ResponseUtil.error(res, 'UNAUTHORIZED', 'Authentication required.', 401);
+        return;
+      }
+      const { reelId } = req.params;
+      if (!reelId) {
+        ResponseUtil.error(res, 'VALIDATION_ERROR', 'Reel ID is required.', 400);
+        return;
+      }
+
+      await query(
+        `INSERT INTO not_interested_reels (id, user_id, reel_id)
+         VALUES ($1, $2, $3)
+         ON CONFLICT (user_id, reel_id) DO NOTHING`,
+        [uuidv4(), user.id, reelId]
+      );
+
+      ResponseUtil.success(res, true, 'Reel marked as not interested. We will avoid showing this in your feed.');
     } catch (err) {
       next(err);
     }

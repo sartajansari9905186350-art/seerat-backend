@@ -1,7 +1,18 @@
 import { z } from 'zod';
 
 export const suspendUserSchema = z.object({
-  reason: z.string().min(5, 'A clear reason for suspension is required.')
+  reason: z.string().min(5, 'A clear reason for suspension is required.'),
+  duration: z.enum(['24h', '7d', '30d', 'custom']).optional().default('24h'),
+  customUntil: z.string().optional()
+});
+
+export const warnUserSchema = z.object({
+  reason: z.string().min(3, 'Warning reason is required'),
+  notes: z.string().optional().default('')
+});
+
+export const banUserSchema = z.object({
+  reason: z.string().min(5, 'Ban reason is required')
 });
 
 export const resolveReportSchema = z.object({

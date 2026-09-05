@@ -10,6 +10,7 @@ export class ModerationService {
     status?: string;
     contentType?: string;
     category?: string;
+    aiStatus?: string;
     search?: string;
     page: number;
     limit: number;
@@ -263,6 +264,44 @@ export class ModerationService {
         client
       );
     });
+  }
+
+  async bulkModeration(
+    items: Array<{ id: string; contentType: ContentType }>,
+    action: 'APPROVE' | 'REJECT' | 'FLAG',
+    admin: AuthTokenPayload,
+    rejectionReason?: RejectionReason,
+    notes: string = '',
+    ipAddress?: string,
+    userAgent?: string
+  ): Promise<{
+    successCount: number;
+    failureCount: number;
+    results: Array<{ id: string; contentType: string; success: boolean; error?: string }>;
+  }> {
+    const results: Array<{ id: string; contentType: string; success: boolean; error?: string }> = [];
+    let successCount = 0;
+    let failureCount = 0;
+
+    for (const item of items) {
+      try {
+        if (action === 'APPROVE') {
+          await this.approveContent(item.id, item.contentType, admin, notes, ipAddress, userAgent);
+        } else if (action === 'REJECT') {
+          const reason = rejectionReason || ('OTHER' as RejectionReason);
+          await this.rejectContent(item.id, item.contentType, reason, notes, admin, ipAddress, userAgent);
+        } else if (action === 'FLAG') {
+          await this.flagContent(item.id, item.contentType, notes, admin, ipAddress, userAgent);
+        }
+        results.push({ id: item.id, contentType: item.contentType, success: true });
+        successCount++;
+      } catch (err: any) {
+        results.push({ id: item.id, contentType: item.contentType, success: false, error: err.message });
+        failureCount++;
+      }
+    }
+
+    return { successCount, failureCount, results };
   }
 }
 

@@ -36,20 +36,44 @@ export const authenticateUser = async (
       return;
     }
 
-    // Verify user is not suspended or disabled
-    const userCheck = await query('SELECT status FROM users WHERE id = $1', [decoded.id]);
+    // Verify user is not suspended or disabled/banned
+    const userCheck = await query(
+      'SELECT status, suspension_reason, suspended_until FROM users WHERE id = $1',
+      [decoded.id]
+    );
     if (userCheck.rows.length === 0) {
       ResponseUtil.error(res, 'USER_NOT_FOUND', 'User account does not exist.', 404);
       return;
     }
 
-    if (userCheck.rows[0].status === 'SUSPENDED') {
-      ResponseUtil.error(res, 'USER_SUSPENDED', 'Your account has been suspended for violating SEERAT community guidelines.', 403);
-      return;
+    const dbUser = userCheck.rows[0];
+
+    if (dbUser.status === 'SUSPENDED') {
+      const now = new Date();
+      if (dbUser.suspended_until && now >= new Date(dbUser.suspended_until)) {
+        // Suspension has expired! Automatically restore to ACTIVE
+        await query(
+          `UPDATE users 
+           SET status = 'ACTIVE', suspension_reason = NULL, suspended_at = NULL, suspended_until = NULL, suspended_by = NULL, updated_at = CURRENT_TIMESTAMP 
+           WHERE id = $1`,
+          [decoded.id]
+        );
+        await query(`UPDATE posts SET status = 'APPROVED' WHERE user_id = $1 AND status = 'SUSPENDED'`, [decoded.id]);
+        await query(`UPDATE reels SET status = 'APPROVED' WHERE user_id = $1 AND status = 'SUSPENDED'`, [decoded.id]);
+      } else {
+        const untilMsg = dbUser.suspended_until ? ` until ${new Date(dbUser.suspended_until).toUTCString()}` : '';
+        ResponseUtil.error(
+          res,
+          'USER_SUSPENDED',
+          `Your account is temporarily suspended${untilMsg}. Reason: ${dbUser.suspension_reason || 'Community guidelines violation.'}`,
+          403
+        );
+        return;
+      }
     }
 
-    if (userCheck.rows[0].status === 'DISABLED') {
-      ResponseUtil.error(res, 'USER_DISABLED', 'Your account has been disabled.', 403);
+    if (dbUser.status === 'BANNED' || dbUser.status === 'DISABLED') {
+      ResponseUtil.error(res, 'USER_BANNED', 'Your account has been permanently banned from SEERAT.', 403);
       return;
     }
 

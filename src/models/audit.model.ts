@@ -7,6 +7,8 @@ export type AuditAction =
   | 'SUSPENDED_USER'
   | 'UNSUSPENDED_USER'
   | 'DISABLED_USER'
+  | 'WARNED_USER'
+  | 'BANNED_USER'
   | 'RESTORED_USER'
   | 'RESOLVED_REPORT'
   | 'DISMISSED_REPORT'

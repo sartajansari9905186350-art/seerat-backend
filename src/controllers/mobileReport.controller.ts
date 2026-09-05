@@ -1,6 +1,6 @@
 import { Response, NextFunction } from 'express';
 import { v4 as uuidv4 } from 'uuid';
-import { withTransaction } from '../config/database';
+import { withTransaction, query } from '../config/database';
 import { ResponseUtil } from '../utils/response';
 import { AuthenticatedUserRequest } from '../middleware/userAuth.middleware';
 
@@ -12,6 +12,17 @@ export class MobileReportController {
 
       if (!targetType || !targetId || !reason) {
         ResponseUtil.error(res, 'VALIDATION_ERROR', 'targetType, targetId, and reason are required.', 400);
+        return;
+      }
+
+      // Check for duplicate pending/open report from this user
+      const existing = await query(
+        `SELECT id FROM reports 
+         WHERE reporter_id = $1 AND target_type = $2 AND target_id = $3 AND status IN ('PENDING', 'OPEN')`,
+        [reporterId, targetType, targetId]
+      );
+      if (existing.rows.length > 0) {
+        ResponseUtil.error(res, 'DUPLICATE_REPORT', 'You have already submitted a report for this content. Our moderation team is reviewing it.', 409);
         return;
       }
 

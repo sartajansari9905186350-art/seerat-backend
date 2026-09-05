@@ -39,17 +39,45 @@ export class UserController {
     }
   }
 
-  async suspend(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+  async warn(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
     try {
       const { id } = req.params;
-      const { reason } = req.body;
+      const { reason, notes = '' } = req.body;
       const admin = req.admin!;
+
+      if (!reason || !reason.trim()) {
+        ResponseUtil.error(res, 'VALIDATION_ERROR', 'Warning reason is required.', 400);
+        return;
+      }
+
       const ipAddress = (req.headers['x-forwarded-for'] as string) || req.ip || '127.0.0.1';
       const userAgent = req.headers['user-agent'];
 
-      const result = await userService.suspendUser(id, reason, admin, ipAddress, userAgent);
+      const result = await userService.warnUser(id, reason.trim(), notes.trim(), admin, ipAddress, userAgent);
 
-      ResponseUtil.success(res, result, `User @${result.username} suspended.`);
+      ResponseUtil.success(res, result, `Warning sent to user @${result.username}. Total warnings: ${result.warningCount}.`);
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  async suspend(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const { id } = req.params;
+      const { reason, duration = '24h', customUntil } = req.body;
+      const admin = req.admin!;
+
+      if (!reason || !reason.trim()) {
+        ResponseUtil.error(res, 'VALIDATION_ERROR', 'Suspension reason is required.', 400);
+        return;
+      }
+
+      const ipAddress = (req.headers['x-forwarded-for'] as string) || req.ip || '127.0.0.1';
+      const userAgent = req.headers['user-agent'];
+
+      const result = await userService.suspendUser(id, reason.trim(), duration, customUntil, admin, ipAddress, userAgent);
+
+      ResponseUtil.success(res, result, `User @${result.username} suspended until ${result.suspendedUntil}.`);
     } catch (err) {
       next(err);
     }
@@ -65,6 +93,33 @@ export class UserController {
       const result = await userService.unsuspendUser(id, admin, ipAddress, userAgent);
 
       ResponseUtil.success(res, result, `User @${result.username} unsuspended.`);
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  async ban(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const { id } = req.params;
+      const { reason } = req.body;
+      const admin = req.admin!;
+
+      if (admin.role !== 'SUPER_ADMIN') {
+        ResponseUtil.error(res, 'FORBIDDEN', 'Only SUPER_ADMIN can permanently ban users.', 403);
+        return;
+      }
+
+      if (!reason || !reason.trim()) {
+        ResponseUtil.error(res, 'VALIDATION_ERROR', 'Ban reason is required.', 400);
+        return;
+      }
+
+      const ipAddress = (req.headers['x-forwarded-for'] as string) || req.ip || '127.0.0.1';
+      const userAgent = req.headers['user-agent'];
+
+      const result = await userService.banUser(id, reason.trim(), admin, ipAddress, userAgent);
+
+      ResponseUtil.success(res, result, `User @${result.username} permanently banned.`);
     } catch (err) {
       next(err);
     }

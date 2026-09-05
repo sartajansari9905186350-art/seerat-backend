@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><title>Video Test</title></head>
+<body>
+<video id="v" src="https://seerat-backend.onrender.com/api/uploads/videos/reel_0d63afed-c529-453a-a5ca-5b8f21f949a2_1788543288346_dcc4fa03.mp4" controls autoplay muted playsinline></video>
+<script>
+const v = document.getElementById('v');
+v.addEventListener('canplay', () => console.log('LOG:BROWSER_TEST_CANPLAY readyState=' + v.readyState));
+v.addEventListener('playing', () => console.log('LOG:BROWSER_TEST_PLAYING currentTime=' + v.currentTime));
+v.addEventListener('timeupdate', () => {
+  if (v.currentTime > 0.5) console.log('LOG:BROWSER_TEST_PROGRESS currentTime=' + v.currentTime);
+});
+v.addEventListener('error', () => {
+  console.log('LOG:BROWSER_TEST_ERROR code=' + (v.error ? v.error.code : 'none') + ' msg=' + (v.error ? v.error.message : 'none'));
+});
+setTimeout(() => {
+  console.log('LOG:BROWSER_TEST_REPORT duration=' + v.duration + ' currentTime=' + v.currentTime + ' paused=' + v.paused + ' readyState=' + v.readyState);
+}, 4000);
+</script>
+</body>
+</html>

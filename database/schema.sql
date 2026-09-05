@@ -3,6 +3,8 @@
 -- ====================================================================
 
 -- Drop Tables if they exist (Clean Migration Reset)
+DROP TABLE IF EXISTS not_interested_reels CASCADE;
+DROP TABLE IF EXISTS user_warnings CASCADE;
 DROP TABLE IF EXISTS admin_audit_logs CASCADE;
 DROP TABLE IF EXISTS audit_logs CASCADE;
 DROP TABLE IF EXISTS moderation_reviews CASCADE;
@@ -45,6 +47,9 @@ CREATE TABLE users (
     is_private BOOLEAN DEFAULT FALSE,
     profile_photo_url VARCHAR(1024) DEFAULT '',
     suspension_reason TEXT,
+    suspended_at TIMESTAMP WITH TIME ZONE,
+    suspended_until TIMESTAMP WITH TIME ZONE,
+    suspended_by UUID,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
@@ -224,6 +229,18 @@ CREATE TABLE saves (
 
 CREATE INDEX idx_saves_user ON saves(user_id);
 
+-- 11b. Not Interested Content Table (User-Specific Feed Customization)
+CREATE TABLE not_interested_reels (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    reel_id UUID NOT NULL REFERENCES reels(id) ON DELETE CASCADE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT uq_not_interested UNIQUE (user_id, reel_id)
+);
+
+CREATE INDEX idx_not_interested_user ON not_interested_reels(user_id);
+CREATE INDEX idx_not_interested_reel ON not_interested_reels(reel_id);
+
 -- 12. Follows Table
 CREATE TABLE follows (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -254,6 +271,7 @@ CREATE TABLE reports (
 CREATE INDEX idx_reports_status ON reports(status);
 CREATE INDEX idx_reports_target ON reports(target_type, target_id);
 CREATE INDEX idx_reports_created_at ON reports(created_at DESC);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_reporter_target ON reports(reporter_id, target_type, target_id) WHERE status IN ('PENDING', 'OPEN');
 
 -- 14. Moderation Reviews Queue Table
 CREATE TABLE moderation_reviews (
@@ -291,6 +309,19 @@ CREATE TABLE admin_audit_logs (
 CREATE INDEX idx_admin_audit_logs_action ON admin_audit_logs(action);
 CREATE INDEX idx_admin_audit_logs_admin ON admin_audit_logs(admin_id);
 CREATE INDEX idx_admin_audit_logs_created_at ON admin_audit_logs(created_at DESC);
+
+-- 15b. User Warnings Table (Persistent Moderation Warnings)
+CREATE TABLE user_warnings (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    admin_id UUID REFERENCES admin_users(id) ON DELETE SET NULL,
+    reason VARCHAR(255) NOT NULL,
+    notes TEXT DEFAULT '',
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX idx_user_warnings_user ON user_warnings(user_id);
+CREATE INDEX idx_user_warnings_created_at ON user_warnings(created_at DESC);
 
 -- 16. Admin Notifications Table
 CREATE TABLE admin_notifications (
