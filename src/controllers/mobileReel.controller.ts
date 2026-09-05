@@ -321,6 +321,40 @@ export class MobileReelController {
       next(err);
     }
   }
+
+  async deleteReel(req: AuthenticatedUserRequest, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const userId = req.user!.id;
+      const { reelId } = req.params;
+
+      const reelRes = await query('SELECT user_id FROM reels WHERE id = $1', [reelId]);
+      if (reelRes.rows.length === 0) {
+        ResponseUtil.error(res, 'NOT_FOUND', 'Reel not found.', 404);
+        return;
+      }
+
+      if (reelRes.rows[0].user_id !== userId) {
+        ResponseUtil.error(res, 'FORBIDDEN', 'You do not have permission to delete this reel.', 403);
+        return;
+      }
+
+      await withTransaction(async (client) => {
+        await client.query(`UPDATE reels SET status = 'REMOVED', updated_at = CURRENT_TIMESTAMP WHERE id = $1`, [reelId]);
+        await client.query(
+          `UPDATE profiles SET reels_count = GREATEST(reels_count - 1, 0) WHERE user_id = $1`,
+          [userId]
+        );
+        await client.query(
+          `UPDATE moderation_reviews SET status = 'REMOVED' WHERE content_id = $1 AND content_type = 'REEL'`,
+          [reelId]
+        );
+      });
+
+      ResponseUtil.success(res, { id: reelId, status: 'REMOVED' }, 'Reel deleted successfully.');
+    } catch (err) {
+      next(err);
+    }
+  }
 }
 
 export const mobileReelController = new MobileReelController();

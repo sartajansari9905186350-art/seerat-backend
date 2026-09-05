@@ -35,11 +35,12 @@ mobileRouter.get('/feed/following', authenticateUser, (req, res, next) => mobile
 mobileRouter.post('/posts', authenticateUser, (req, res, next) => mobilePostController.createPost(req, res, next));
 mobileRouter.delete('/posts/:postId', authenticateUser, (req, res, next) => mobilePostController.deletePost(req, res, next));
 
-// Reels (Feed, Create, Upload, Views)
+// Reels (Feed, Create, Upload, Views, Delete)
 mobileRouter.get('/reels/foryou', optionalUserAuth, (req, res, next) => mobileReelController.getForYouReels(req, res, next));
 mobileRouter.get('/reels/following', authenticateUser, (req, res, next) => mobileReelController.getFollowingReels(req, res, next));
 mobileRouter.post('/reels/upload', authenticateUser, handleVideoUpload, (req, res, next) => mobileReelController.uploadVideo(req, res, next));
 mobileRouter.post('/reels', authenticateUser, (req, res, next) => mobileReelController.createReel(req, res, next));
+mobileRouter.delete('/reels/:reelId', authenticateUser, (req, res, next) => mobileReelController.deleteReel(req, res, next));
 mobileRouter.post('/reels/:reelId/view', optionalUserAuth, (req, res, next) => mobileReelController.recordReelView(req, res, next));
 
 // Comments

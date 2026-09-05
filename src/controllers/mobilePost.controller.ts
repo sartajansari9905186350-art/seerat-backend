@@ -144,14 +144,18 @@ export class MobilePostController {
       }
 
       await withTransaction(async (client) => {
-        await client.query(`UPDATE posts SET status = 'REMOVED' WHERE id = $1`, [postId]);
+        await client.query(`UPDATE posts SET status = 'REMOVED', updated_at = CURRENT_TIMESTAMP WHERE id = $1`, [postId]);
         await client.query(
           `UPDATE profiles SET posts_count = GREATEST(posts_count - 1, 0) WHERE user_id = $1`,
           [userId]
         );
+        await client.query(
+          `UPDATE moderation_reviews SET status = 'REMOVED' WHERE content_id = $1 AND content_type = 'POST'`,
+          [postId]
+        );
       });
 
-      ResponseUtil.success(res, null, 'Post deleted successfully.');
+      ResponseUtil.success(res, { id: postId, status: 'REMOVED' }, 'Post deleted successfully.');
     } catch (err) {
       next(err);
     }
