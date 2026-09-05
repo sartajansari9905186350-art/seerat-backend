@@ -14,6 +14,27 @@ async function runMobileE2ETest() {
   await runMigration();
   await seedDatabase();
 
+  await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS is_profile_completed BOOLEAN DEFAULT TRUE;`);
+  await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS auth_provider VARCHAR(50) DEFAULT 'EMAIL';`);
+  await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS provider_user_id VARCHAR(255);`);
+  await pool.query(`ALTER TABLE profiles ADD COLUMN IF NOT EXISTS profile_photo VARCHAR(1024) DEFAULT '';`);
+  await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS profile_photo_url VARCHAR(1024) DEFAULT '';`);
+  await pool.query(`ALTER TABLE posts ADD COLUMN IF NOT EXISTS ai_status VARCHAR(50) DEFAULT 'UNCERTAIN';`);
+  await pool.query(`ALTER TABLE posts ADD COLUMN IF NOT EXISTS ai_confidence NUMERIC(4,3) DEFAULT 0.500;`);
+  await pool.query(`ALTER TABLE posts ADD COLUMN IF NOT EXISTS ai_reason TEXT DEFAULT '';`);
+  await pool.query(`ALTER TABLE posts ADD COLUMN IF NOT EXISTS ai_analyzed_at TIMESTAMP WITH TIME ZONE;`);
+  await pool.query(`ALTER TABLE posts ADD COLUMN IF NOT EXISTS ai_metadata JSONB DEFAULT '{}'::jsonb;`);
+
+  await pool.query(`ALTER TABLE reels ADD COLUMN IF NOT EXISTS ai_status VARCHAR(50) DEFAULT 'UNCERTAIN';`);
+  await pool.query(`ALTER TABLE reels ADD COLUMN IF NOT EXISTS ai_confidence NUMERIC(4,3) DEFAULT 0.500;`);
+  await pool.query(`ALTER TABLE reels ADD COLUMN IF NOT EXISTS ai_reason TEXT DEFAULT '';`);
+  await pool.query(`ALTER TABLE reels ADD COLUMN IF NOT EXISTS ai_analyzed_at TIMESTAMP WITH TIME ZONE;`);
+  await pool.query(`ALTER TABLE reels ADD COLUMN IF NOT EXISTS ai_metadata JSONB DEFAULT '{}'::jsonb;`);
+
+  await pool.query(`ALTER TABLE moderation_reviews ADD COLUMN IF NOT EXISTS ai_status VARCHAR(50) DEFAULT 'UNCERTAIN';`);
+  await pool.query(`ALTER TABLE moderation_reviews ADD COLUMN IF NOT EXISTS ai_confidence NUMERIC(4,3) DEFAULT 0.500;`);
+  await pool.query(`ALTER TABLE moderation_reviews ADD COLUMN IF NOT EXISTS ai_reason TEXT DEFAULT '';`);
+
 
   // 1. Mobile User Signup
   console.log('📝 [1/11] Testing Mobile User Signup...');
@@ -214,7 +235,90 @@ async function runMobileE2ETest() {
   if (commentRes.status !== 201) {
     throw new Error(`Comment failed: ${JSON.stringify(commentRes.body)}`);
   }
+  const createdCommentId = commentRes.body.data.id;
   console.log('  ✓ Comment added successfully.');
+
+  // Test Comment Editing (PATCH /api/comments/:commentId)
+  console.log('✏️ [8b/11] Testing Comment Edit & Ownership Security...');
+  
+  // 1. Unauthorized attempt (no token) -> 401
+  const noAuthEdit = await request(app)
+    .patch(`/api/comments/${createdCommentId}`)
+    .send({ content: 'Unauthenticated edit attempt' });
+  if (noAuthEdit.status !== 401) {
+    throw new Error(`Expected 401 for no auth, got ${noAuthEdit.status}`);
+  }
+  console.log('  ✓ No-auth edit rejected with HTTP 401.');
+
+  // 2. Forbidden attempt (Other user editing) -> 403
+  // Register another user
+  const otherUserRes = await request(app)
+    .post('/api/auth/signup')
+    .send({
+      name: 'Other User',
+      username: `other_${Date.now()}`,
+      email: `other_${Date.now()}@seerat.app`,
+      password: 'StrongPassword123!',
+      phone: `+91${Math.floor(1000000000 + Math.random() * 9000000000)}`
+    });
+  const otherToken = otherUserRes.body.data.token;
+
+  const forbiddenEdit = await request(app)
+    .patch(`/api/comments/${createdCommentId}`)
+    .set('Authorization', `Bearer ${otherToken}`)
+    .send({ content: 'Attempt to tamper with other user comment' });
+  if (forbiddenEdit.status !== 403) {
+    throw new Error(`Expected 403 FORBIDDEN for editing someone else's comment, got ${forbiddenEdit.status}`);
+  }
+  console.log('  ✓ Other user edit blocked with HTTP 403 (Ownership verified).');
+
+  // 3. Validation error (empty content) -> 400
+  const emptyEdit = await request(app)
+    .patch(`/api/comments/${createdCommentId}`)
+    .set('Authorization', `Bearer ${userToken}`)
+    .send({ content: '   ' });
+  if (emptyEdit.status !== 400) {
+    throw new Error(`Expected 400 for empty content, got ${emptyEdit.status}`);
+  }
+  console.log('  ✓ Empty edit rejected with HTTP 400.');
+
+  // 4. Non-existent comment -> 404
+  const notFoundEdit = await request(app)
+    .patch('/api/comments/00000000-0000-0000-0000-000000000000')
+    .set('Authorization', `Bearer ${userToken}`)
+    .send({ content: 'Updated content' });
+  if (notFoundEdit.status !== 404) {
+    throw new Error(`Expected 404 for non-existent comment, got ${notFoundEdit.status}`);
+  }
+  console.log('  ✓ Non-existent comment edit rejected with HTTP 404.');
+
+  // 5. Valid Edit by owner -> 200 OK
+  const validEdit = await request(app)
+    .patch(`/api/comments/${createdCommentId}`)
+    .set('Authorization', `Bearer ${userToken}`)
+    .send({ content: 'Updated test comment' });
+  if (validEdit.status !== 200 || validEdit.body.data.content !== 'Updated test comment') {
+    throw new Error(`Valid edit failed: ${JSON.stringify(validEdit.body)}`);
+  }
+  console.log('  ✓ Owner edit succeeded with HTTP 200. Content updated.');
+
+  // 6. Verify via GET /api/comments
+  const getComments = await request(app)
+    .get(`/api/comments?postId=${submittedPost.id}`);
+  const found = getComments.body.data.find((c: any) => c.id === createdCommentId);
+  if (!found || found.content !== 'Updated test comment') {
+    throw new Error(`Database persistence failed: found content is ${found?.content}`);
+  }
+  console.log('  ✓ Database persistence verified via GET /api/comments.');
+
+  // 7. Delete Comment (verify delete still works)
+  const deleteCommentRes = await request(app)
+    .delete(`/api/comments/${createdCommentId}`)
+    .set('Authorization', `Bearer ${userToken}`);
+  if (deleteCommentRes.status !== 200) {
+    throw new Error(`Delete comment failed: ${JSON.stringify(deleteCommentRes.body)}`);
+  }
+  console.log('  ✓ Comment deleted successfully (Delete functionality preserved).');
 
   // 10. Community Reporting
   console.log('🚩 [9/11] Testing Community Content Reporting...');
