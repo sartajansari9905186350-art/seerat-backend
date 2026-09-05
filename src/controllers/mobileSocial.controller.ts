@@ -324,6 +324,78 @@ export class MobileSocialController {
     }
   }
 
+  async editComment(req: AuthenticatedUserRequest, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const userId = req.user!.id;
+      const { commentId } = req.params;
+      const { content } = req.body;
+
+      if (!content || typeof content !== 'string' || content.trim().length === 0) {
+        ResponseUtil.error(res, 'VALIDATION_ERROR', 'Comment text is required.', 400);
+        return;
+      }
+
+      const existing = await query(
+        `SELECT c.id, c.user_id, c.post_id, c.reel_id, c.parent_comment_id, c.likes_count, c.created_at,
+                u.name as user_name, u.username, prof.profile_photo
+         FROM comments c
+         JOIN users u ON c.user_id = u.id
+         LEFT JOIN profiles prof ON u.id = prof.user_id
+         WHERE c.id = $1`,
+        [commentId]
+      );
+
+      if (existing.rows.length === 0) {
+        ResponseUtil.error(res, 'NOT_FOUND', 'Comment not found.', 404);
+        return;
+      }
+
+      if (existing.rows[0].user_id !== userId) {
+        ResponseUtil.error(res, 'FORBIDDEN', 'You can only edit your own comment.', 403);
+        return;
+      }
+
+      const trimmedContent = content.trim();
+
+      const updateResult = await query(
+        `UPDATE comments
+         SET content = $1, updated_at = CURRENT_TIMESTAMP
+         WHERE id = $2
+         RETURNING id, user_id, post_id, reel_id, parent_comment_id, content, likes_count, created_at, updated_at`,
+        [trimmedContent, commentId]
+      );
+
+      const checkLike = await query(
+        `SELECT 1 FROM comment_likes WHERE comment_id = $1 AND user_id = $2`,
+        [commentId, userId]
+      );
+
+      const row = updateResult.rows[0];
+      const updatedComment = {
+        id: row.id,
+        user_id: row.user_id,
+        user: {
+          id: row.user_id,
+          name: existing.rows[0].user_name,
+          username: existing.rows[0].username,
+          profile_photo: existing.rows[0].profile_photo || ''
+        },
+        post_id: row.post_id,
+        reel_id: row.reel_id,
+        parent_comment_id: row.parent_comment_id,
+        content: row.content,
+        likes_count: parseInt(row.likes_count || '0', 10),
+        is_liked: checkLike.rows.length > 0,
+        created_at: new Date(row.created_at).toLocaleDateString(),
+        updated_at: row.updated_at
+      };
+
+      ResponseUtil.success(res, updatedComment, 'Comment updated successfully.', 200);
+    } catch (err) {
+      next(err);
+    }
+  }
+
   async deleteComment(req: AuthenticatedUserRequest, res: Response, next: NextFunction): Promise<void> {
     try {
       const userId = req.user!.id;

@@ -48,6 +48,8 @@ mobileRouter.post('/reels/:reelId/view', optionalUserAuth, (req, res, next) => m
 // Comments
 mobileRouter.get('/comments', optionalUserAuth, (req, res, next) => mobileSocialController.getComments(req, res, next));
 mobileRouter.post('/comments', authenticateUser, (req, res, next) => mobileSocialController.addComment(req, res, next));
+mobileRouter.patch('/comments/:commentId', authenticateUser, (req, res, next) => mobileSocialController.editComment(req, res, next));
+mobileRouter.put('/comments/:commentId', authenticateUser, (req, res, next) => mobileSocialController.editComment(req, res, next));
 mobileRouter.delete('/comments/:commentId', authenticateUser, (req, res, next) => mobileSocialController.deleteComment(req, res, next));
 
 // Likes, Saves, Follows
