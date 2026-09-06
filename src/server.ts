@@ -41,9 +41,41 @@ const checkAndInitSchema = async (): Promise<void> => {
       await query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS is_profile_completed BOOLEAN DEFAULT TRUE;`);
       await query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS auth_provider VARCHAR(50) DEFAULT 'EMAIL';`);
       await query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS provider_user_id VARCHAR(255);`);
+      await query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS suspended_at TIMESTAMP WITH TIME ZONE;`);
+      await query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS suspended_until TIMESTAMP WITH TIME ZONE;`);
+      await query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS suspended_by UUID;`);
       await query(`CREATE INDEX IF NOT EXISTS idx_users_provider_user_id ON users(provider_user_id);`);
     } catch (colErr: any) {
       logger.warn('Could not ensure user provider and profile columns:', colErr.message);
+    }
+
+    // Ensure not_interested_reels and user_warnings tables exist
+    try {
+      await query(`
+        CREATE TABLE IF NOT EXISTS not_interested_reels (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            reel_id UUID NOT NULL REFERENCES reels(id) ON DELETE CASCADE,
+            created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+            CONSTRAINT uq_not_interested UNIQUE (user_id, reel_id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_not_interested_user ON not_interested_reels(user_id);
+        CREATE INDEX IF NOT EXISTS idx_not_interested_reel ON not_interested_reels(reel_id);
+
+        CREATE TABLE IF NOT EXISTS user_warnings (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            admin_id UUID REFERENCES admin_users(id) ON DELETE SET NULL,
+            reason VARCHAR(255) NOT NULL,
+            notes TEXT DEFAULT '',
+            created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE INDEX IF NOT EXISTS idx_user_warnings_user ON user_warnings(user_id);
+        CREATE INDEX IF NOT EXISTS idx_user_warnings_created_at ON user_warnings(created_at DESC);
+      `);
+      logger.info('not_interested_reels and user_warnings tables verified.');
+    } catch (tblErr: any) {
+      logger.warn('Could not ensure not_interested_reels / user_warnings tables:', tblErr.message);
     }
 
     // Ensure profile photo columns exist across users, profiles, and admin_users

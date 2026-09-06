@@ -5,6 +5,7 @@ import { ResponseUtil } from '../utils/response';
 import { AuthenticatedUserRequest } from '../middleware/userAuth.middleware';
 import { aiModerationService } from '../services/aiModeration.service';
 import { videoStorage } from '../services/videoStorage.service';
+import { logger } from '../utils/logger';
 
 
 export class MobileReelController {
@@ -73,7 +74,21 @@ export class MobileReelController {
         LIMIT $2 OFFSET $3
       `;
 
-      const result = await query(sql, [currentUserId, limitNum, offset]);
+      let result;
+      try {
+        result = await query(sql, [currentUserId, limitNum, offset]);
+      } catch (queryErr: any) {
+        if (queryErr.message && queryErr.message.includes('not_interested_reels')) {
+          logger.warn('[Reels] not_interested_reels table not found, executing fallback query without not-interested filter...');
+          const fallbackSql = sql.replace(
+            "AND ($1 = '00000000-0000-0000-0000-000000000000' OR r.id NOT IN (SELECT reel_id FROM not_interested_reels WHERE user_id = $1))",
+            ""
+          );
+          result = await query(fallbackSql, [currentUserId, limitNum, offset]);
+        } else {
+          throw queryErr;
+        }
+      }
 
       const formattedReels = result.rows.map(r => ({
         id: r.id,
