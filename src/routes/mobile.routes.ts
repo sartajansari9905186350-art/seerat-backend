@@ -52,6 +52,8 @@ mobileRouter.post('/comments', authenticateUser, (req, res, next) => mobileSocia
 mobileRouter.patch('/comments/:commentId', authenticateUser, (req, res, next) => mobileSocialController.editComment(req, res, next));
 mobileRouter.put('/comments/:commentId', authenticateUser, (req, res, next) => mobileSocialController.editComment(req, res, next));
 mobileRouter.delete('/comments/:commentId', authenticateUser, (req, res, next) => mobileSocialController.deleteComment(req, res, next));
+mobileRouter.post('/comments/:commentId/like', authenticateUser, (req, res, next) => mobileSocialController.toggleLikeComment(req, res, next));
+mobileRouter.post('/likes/comment/:commentId', authenticateUser, (req, res, next) => mobileSocialController.toggleLikeComment(req, res, next));
 
 // Likes, Saves, Follows
 mobileRouter.post('/likes/post/:postId', authenticateUser, (req, res, next) => mobileSocialController.toggleLikePost(req, res, next));

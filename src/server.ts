@@ -72,10 +72,22 @@ const checkAndInitSchema = async (): Promise<void> => {
         );
         CREATE INDEX IF NOT EXISTS idx_user_warnings_user ON user_warnings(user_id);
         CREATE INDEX IF NOT EXISTS idx_user_warnings_created_at ON user_warnings(created_at DESC);
+
+        CREATE TABLE IF NOT EXISTS comment_likes (
+            user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            comment_id UUID NOT NULL REFERENCES comments(id) ON DELETE CASCADE,
+            created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (user_id, comment_id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_comment_likes_comment_id ON comment_likes(comment_id);
+        CREATE INDEX IF NOT EXISTS idx_comment_likes_user_id ON comment_likes(user_id);
+        ALTER TABLE comments ADD COLUMN IF NOT EXISTS parent_comment_id UUID REFERENCES comments(id) ON DELETE CASCADE;
+        ALTER TABLE comments ADD COLUMN IF NOT EXISTS likes_count INT DEFAULT 0;
+        CREATE INDEX IF NOT EXISTS idx_comments_parent_id ON comments(parent_comment_id);
       `);
-      logger.info('not_interested_reels and user_warnings tables verified.');
+      logger.info('not_interested_reels, user_warnings, and comment_likes tables verified.');
     } catch (tblErr: any) {
-      logger.warn('Could not ensure not_interested_reels / user_warnings tables:', tblErr.message);
+      logger.warn('Could not ensure not_interested_reels / user_warnings / comment_likes tables:', tblErr.message);
     }
 
     // Ensure profile photo columns exist across users, profiles, and admin_users

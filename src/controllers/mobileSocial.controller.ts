@@ -261,7 +261,38 @@ export class MobileSocialController {
       const userId = req.user!.id;
       const { postId, reelId, content, parentCommentId } = req.body;
 
-      if (!content || (!postId && !reelId)) {
+      if (!content || typeof content !== 'string' || content.trim().length === 0) {
+        ResponseUtil.error(res, 'VALIDATION_ERROR', 'Comment text is required.', 400);
+        return;
+      }
+
+      let targetPostId = postId || null;
+      let targetReelId = reelId || null;
+      let parentComment: any = null;
+
+      if (parentCommentId) {
+        const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+        if (!UUID_REGEX.test(parentCommentId)) {
+          ResponseUtil.error(res, 'NOT_FOUND', 'Parent comment not found.', 404);
+          return;
+        }
+
+        const parentResult = await query(
+          'SELECT id, user_id, post_id, reel_id FROM comments WHERE id = $1',
+          [parentCommentId]
+        );
+        if (parentResult.rows.length === 0) {
+          ResponseUtil.error(res, 'NOT_FOUND', 'Parent comment not found.', 404);
+          return;
+        }
+        parentComment = parentResult.rows[0];
+        if (!targetPostId && !targetReelId) {
+          targetPostId = parentComment.post_id;
+          targetReelId = parentComment.reel_id;
+        }
+      }
+
+      if (!targetPostId && !targetReelId) {
         ResponseUtil.error(res, 'VALIDATION_ERROR', 'Comment text and post/reel ID are required.', 400);
         return;
       }
@@ -272,29 +303,38 @@ export class MobileSocialController {
         await client.query(
           `INSERT INTO comments (id, user_id, post_id, reel_id, parent_comment_id, content)
            VALUES ($1, $2, $3, $4, $5, $6)`,
-          [commentId, userId, postId || null, reelId || null, parentCommentId || null, content.trim()]
+          [commentId, userId, targetPostId, targetReelId, parentCommentId || null, content.trim()]
         );
 
-        if (postId) {
-          await client.query('UPDATE posts SET comments_count = comments_count + 1 WHERE id = $1', [postId]);
-          const postOwner = await client.query('SELECT user_id FROM posts WHERE id = $1', [postId]);
-          if (postOwner.rows.length > 0 && postOwner.rows[0].user_id !== userId) {
+        if (targetPostId) {
+          await client.query('UPDATE posts SET comments_count = comments_count + 1 WHERE id = $1', [targetPostId]);
+          const postOwner = await client.query('SELECT user_id FROM posts WHERE id = $1', [targetPostId]);
+          if (postOwner.rows.length > 0 && postOwner.rows[0].user_id !== userId && (!parentComment || parentComment.user_id !== postOwner.rows[0].user_id)) {
             await client.query(
               `INSERT INTO notifications (id, user_id, actor_id, type, post_id, message)
                VALUES ($1, $2, $3, 'COMMENT', $4, $5)`,
-              [uuidv4(), postOwner.rows[0].user_id, userId, postId, `${req.user!.name} commented on your post: "${content.trim().slice(0, 30)}..."`]
+              [uuidv4(), postOwner.rows[0].user_id, userId, targetPostId, `${req.user!.name} commented on your post: "${content.trim().slice(0, 30)}..."`]
             );
           }
-        } else if (reelId) {
-          await client.query('UPDATE reels SET comments_count = comments_count + 1 WHERE id = $1', [reelId]);
-          const reelOwner = await client.query('SELECT user_id FROM reels WHERE id = $1', [reelId]);
-          if (reelOwner.rows.length > 0 && reelOwner.rows[0].user_id !== userId) {
+        } else if (targetReelId) {
+          await client.query('UPDATE reels SET comments_count = comments_count + 1 WHERE id = $1', [targetReelId]);
+          const reelOwner = await client.query('SELECT user_id FROM reels WHERE id = $1', [targetReelId]);
+          if (reelOwner.rows.length > 0 && reelOwner.rows[0].user_id !== userId && (!parentComment || parentComment.user_id !== reelOwner.rows[0].user_id)) {
             await client.query(
               `INSERT INTO notifications (id, user_id, actor_id, type, reel_id, message)
                VALUES ($1, $2, $3, 'COMMENT', $4, $5)`,
-              [uuidv4(), reelOwner.rows[0].user_id, userId, reelId, `${req.user!.name} commented on your reel: "${content.trim().slice(0, 30)}..."`]
+              [uuidv4(), reelOwner.rows[0].user_id, userId, targetReelId, `${req.user!.name} commented on your reel: "${content.trim().slice(0, 30)}..."`]
             );
           }
+        }
+
+        // Notify parent comment author if this is a reply
+        if (parentComment && parentComment.user_id !== userId) {
+          await client.query(
+            `INSERT INTO notifications (id, user_id, actor_id, type, ${targetPostId ? 'post_id' : 'reel_id'}, message)
+             VALUES ($1, $2, $3, 'COMMENT', $4, $5)`,
+            [uuidv4(), parentComment.user_id, userId, targetPostId || targetReelId, `${req.user!.name} replied to your comment: "${content.trim().slice(0, 30)}..."`]
+          );
         }
       });
 
@@ -309,8 +349,8 @@ export class MobileSocialController {
           username: req.user!.username,
           profile_photo: userProfile.rows[0]?.profile_photo || ''
         },
-        post_id: postId || null,
-        reel_id: reelId || null,
+        post_id: targetPostId,
+        reel_id: targetReelId,
         parent_comment_id: parentCommentId || null,
         content: content.trim(),
         likes_count: 0,
@@ -332,6 +372,12 @@ export class MobileSocialController {
 
       if (!content || typeof content !== 'string' || content.trim().length === 0) {
         ResponseUtil.error(res, 'VALIDATION_ERROR', 'Comment text is required.', 400);
+        return;
+      }
+
+      const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+      if (!commentId || !UUID_REGEX.test(commentId)) {
+        ResponseUtil.error(res, 'NOT_FOUND', 'Comment not found.', 404);
         return;
       }
 
@@ -401,6 +447,12 @@ export class MobileSocialController {
       const userId = req.user!.id;
       const { commentId } = req.params;
 
+      const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+      if (!commentId || !UUID_REGEX.test(commentId)) {
+        ResponseUtil.error(res, 'NOT_FOUND', 'Comment not found.', 404);
+        return;
+      }
+
       await withTransaction(async (client) => {
         const comment = await client.query('SELECT post_id, reel_id, user_id FROM comments WHERE id = $1', [commentId]);
         if (comment.rows.length === 0) {
@@ -424,6 +476,61 @@ export class MobileSocialController {
       });
 
       ResponseUtil.success(res, 'Comment deleted.');
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  async toggleLikeComment(req: AuthenticatedUserRequest, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const userId = req.user!.id;
+      const { commentId } = req.params;
+
+      const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+      if (!commentId || !UUID_REGEX.test(commentId)) {
+        ResponseUtil.error(res, 'NOT_FOUND', 'Comment not found.', 404);
+        return;
+      }
+
+      const commentCheck = await query('SELECT id, user_id, post_id, reel_id FROM comments WHERE id = $1', [commentId]);
+      if (commentCheck.rows.length === 0) {
+        ResponseUtil.error(res, 'NOT_FOUND', 'Comment not found.', 404);
+        return;
+      }
+
+      let isLiked = false;
+      await withTransaction(async (client) => {
+        const existing = await client.query(
+          'SELECT 1 FROM comment_likes WHERE user_id = $1 AND comment_id = $2',
+          [userId, commentId]
+        );
+
+        if (existing.rows.length > 0) {
+          await client.query('DELETE FROM comment_likes WHERE user_id = $1 AND comment_id = $2', [userId, commentId]);
+          await client.query('UPDATE comments SET likes_count = GREATEST(likes_count - 1, 0) WHERE id = $1', [commentId]);
+          isLiked = false;
+        } else {
+          await client.query(
+            'INSERT INTO comment_likes (user_id, comment_id) VALUES ($1, $2) ON CONFLICT (user_id, comment_id) DO NOTHING',
+            [userId, commentId]
+          );
+          await client.query('UPDATE comments SET likes_count = likes_count + 1 WHERE id = $1', [commentId]);
+          isLiked = true;
+
+          const commentOwnerId = commentCheck.rows[0].user_id;
+          if (commentOwnerId && commentOwnerId !== userId) {
+            const targetPostId = commentCheck.rows[0].post_id;
+            const targetReelId = commentCheck.rows[0].reel_id;
+            await client.query(
+              `INSERT INTO notifications (id, user_id, actor_id, type, ${targetPostId ? 'post_id' : targetReelId ? 'reel_id' : 'post_id'}, message)
+               VALUES ($1, $2, $3, 'LIKE', $4, $5)`,
+              [uuidv4(), commentOwnerId, userId, targetPostId || targetReelId || null, `${req.user!.name} liked your comment.`]
+            );
+          }
+        }
+      });
+
+      ResponseUtil.success(res, isLiked);
     } catch (err) {
       next(err);
     }
