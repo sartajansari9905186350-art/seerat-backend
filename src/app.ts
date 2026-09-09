@@ -85,6 +85,10 @@ app.get('/api/health', async (req, res) => {
         supabase_url: env.supabaseUrl || 'not-set',
         bucket: env.supabaseStorageBucket
       },
+      ai: {
+        has_openrouter_key: !!process.env.OPENROUTER_API_KEY,
+        openrouter_model: process.env.OPENROUTER_MODEL || 'openrouter/free'
+      },
       timestamp: new Date()
     });
   } catch (err: any) {

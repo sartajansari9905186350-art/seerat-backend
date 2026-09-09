@@ -55,6 +55,27 @@ export class MobileNotificationController {
       next(err);
     }
   }
+
+  async deleteNotification(req: AuthenticatedUserRequest, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const userId = req.user!.id;
+      const { id } = req.params;
+
+      const result = await query(
+        'DELETE FROM notifications WHERE id = $1 AND user_id = $2 RETURNING id',
+        [id, userId]
+      );
+
+      if (result.rowCount === 0) {
+        ResponseUtil.error(res, 'NOT_FOUND', 'Notification not found or not authorized', 404);
+        return;
+      }
+
+      ResponseUtil.success(res, true, 'Notification deleted successfully.');
+    } catch (err) {
+      next(err);
+    }
+  }
 }
 
 export const mobileNotificationController = new MobileNotificationController();

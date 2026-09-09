@@ -370,7 +370,22 @@ INSERT INTO categories (id, name, slug, arabic_name, description, sort_order) VA
 (4, 'Bayan', 'bayan', 'البيان والمواعظ', 'Islamic Lectures, Khutbahs, and Short Bayans', 4),
 (5, 'Zikr', 'zikr', 'الذكر والتسبيح', 'Remembrances, Tasbih, and Durood', 5),
 (6, 'Seerah', 'seerah', 'السيرة النبوية', 'Biography of Prophet Muhammad (PBUH) & Companions', 6),
-(7, 'Islamic Reminder', 'reminder', 'مواعظ إسلامية', 'Daily inspirational reflections and moral reminders', 7)
+(7, 'Islamic Reminder', 'reminder', 'مواعظ إسلامية', 'Daily inspirational reflections and moral reminders', 7),
+(8, 'Tafsir', 'tafsir', 'التفسير والبيان', 'Deep commentary and meaning of Quranic verses', 8),
+(9, 'Fiqh & Rulings', 'fiqh', 'الفقه والأحكام', 'Islamic jurisprudence and practical religious guidance', 9),
+(10, 'Tajweed', 'tajweed', 'التجويد والترتيل', 'Quranic recitation rules and pronunciation', 10),
+(11, 'Islamic History', 'history', 'التاريخ الإسلامي', 'History of the Islamic civilization and scholars', 11),
+(12, 'Aqeedah', 'aqeedah', 'العقيدة والتوحيد', 'Fundamentals of Islamic belief and monotheism', 12),
+(13, 'Akhlaq & Character', 'akhlaq', 'الأخلاق والآداب', 'Prophetic manners, ethics, and personal conduct', 13),
+(14, 'Family in Islam', 'family', 'الأسرة المسلمة', 'Marriage, parenting, and family harmony in Islam', 14),
+(15, 'Halal Living', 'halal-living', 'الحياة الحلال', 'Halal lifestyle, ethics, finance, and consumption', 15),
+(16, 'Hajj & Umrah', 'hajj-umrah', 'الحج والعمرة', 'Pilgrimage guides, rituals, and reflections', 16),
+(17, 'Ramadan & Fasting', 'ramadan', 'رمضان والصيام', 'Spiritual preparation, virtues, and rules of fasting', 17),
+(18, 'Zakat & Sadaqah', 'zakat', 'الزكاة والصدقة', 'Charity, social justice, and financial obligations', 18),
+(19, 'Dawah & Outreach', 'dawah', 'الدعوة إلى الله', 'Inviting to Islam with wisdom and good character', 19),
+(20, 'Youth & Identity', 'youth', 'الشباب والهوية', 'Muslim identity, modern challenges, and personal growth', 20),
+(21, 'Islamic Kids & Parenting', 'kids', 'أطفالنا والإسلام', 'Nurturing faith and morals in children', 21),
+(22, 'Inspirational Calligraphy', 'calligraphy', 'الخط والفن الإسلامي', 'Sacred calligraphy, Islamic architecture, and aesthetic arts', 22)
 ON CONFLICT (slug) DO NOTHING;
 
 -- Insert Default System Settings

@@ -8,6 +8,7 @@ import { mobileUserController } from '../controllers/mobileUser.controller';
 import { mobileReportController } from '../controllers/mobileReport.controller';
 import { mobileNotificationController } from '../controllers/mobileNotification.controller';
 import { mobileCategoryController } from '../controllers/mobileCategory.controller';
+import { mobileAiController } from '../controllers/mobileAi.controller';
 import { authenticateUser, optionalUserAuth } from '../middleware/userAuth.middleware';
 import { handlePhotoUpload, handleVideoUpload } from '../middleware/upload.middleware';
 
@@ -26,6 +27,7 @@ mobileRouter.get('/auth/me', authenticateUser, (req, res, next) => mobileAuthCon
 
 // Categories
 mobileRouter.get('/categories', (req, res, next) => mobileCategoryController.getCategories(req, res, next));
+mobileRouter.post('/ai/assistant', authenticateUser, (req, res, next) => mobileAiController.assistant(req, res, next));
 
 // Home Feed
 mobileRouter.get('/feed', optionalUserAuth, (req, res, next) => mobileFeedController.getFeed(req, res, next));
@@ -83,3 +85,4 @@ mobileRouter.post('/reports', authenticateUser, (req, res, next) => mobileReport
 // Notifications
 mobileRouter.get('/notifications', authenticateUser, (req, res, next) => mobileNotificationController.getNotifications(req, res, next));
 mobileRouter.post('/notifications/:id/read', authenticateUser, (req, res, next) => mobileNotificationController.markAsRead(req, res, next));
+mobileRouter.delete('/notifications/:id', authenticateUser, (req, res, next) => mobileNotificationController.deleteNotification(req, res, next));

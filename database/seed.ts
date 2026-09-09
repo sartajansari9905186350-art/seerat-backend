@@ -19,8 +19,8 @@ export const seedDatabase = async (): Promise<void> => {
       await client.query(
         `INSERT INTO admin_users (id, name, email, password_hash, role, status, avatar_url)
          VALUES 
-          ($1, 'Sartaj Ansari', 'helpwaladost@gmail.com', $2, 'SUPER_ADMIN', 'ACTIVE', 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150'),
-          ($3, 'Zayd Al-Ansari', 'moderator@seerat.app', $4, 'MODERATOR', 'ACTIVE', 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150')
+          ($1, 'Sartaj Ansari', 'helpwaladost@gmail.com', $2, 'SUPER_ADMIN', 'ACTIVE', NULL),
+          ($3, 'Zayd Al-Ansari', 'moderator@seerat.app', $4, 'MODERATOR', 'ACTIVE', NULL)
          ON CONFLICT (email) DO UPDATE 
          SET name = EXCLUDED.name, password_hash = EXCLUDED.password_hash, role = EXCLUDED.role, status = EXCLUDED.status`,
         [superAdminId, superAdminPass, moderatorId, moderatorPass]
@@ -55,10 +55,10 @@ export const seedDatabase = async (): Promise<void> => {
 
       // 3. Seed Media Assets
       const mediaItems = [
-        { id: uuidv4(), owner_id: users[0].id, type: 'VIDEO', url: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4', thumb: 'https://images.unsplash.com/photo-1609599006353-e629aaabfeae?w=600', duration: 45 },
-        { id: uuidv4(), owner_id: users[1].id, type: 'VIDEO', url: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4', thumb: 'https://images.unsplash.com/photo-1542816417-0983c9c9ad53?w=600', duration: 60 },
-        { id: uuidv4(), owner_id: users[3].id, type: 'VIDEO', url: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4', thumb: 'https://images.unsplash.com/photo-1564769625905-50e93615e769?w=600', duration: 30 },
-        { id: uuidv4(), owner_id: users[2].id, type: 'PHOTO', url: 'https://images.unsplash.com/photo-1590076215667-873d3a772590?w=800', thumb: 'https://images.unsplash.com/photo-1590076215667-873d3a772590?w=600', duration: 0 }
+        { id: uuidv4(), owner_id: users[0].id, type: 'VIDEO', url: 'https://seerat-backend.onrender.com/media/quran_recitation.mp4', thumb: '', duration: 45 },
+        { id: uuidv4(), owner_id: users[1].id, type: 'VIDEO', url: 'https://seerat-backend.onrender.com/media/hadith_reflection.mp4', thumb: '', duration: 60 },
+        { id: uuidv4(), owner_id: users[3].id, type: 'VIDEO', url: 'https://seerat-backend.onrender.com/media/short_bayan.mp4', thumb: '', duration: 30 },
+        { id: uuidv4(), owner_id: users[2].id, type: 'PHOTO', url: 'https://seerat-backend.onrender.com/media/dua_card.jpg', thumb: '', duration: 0 }
       ];
 
       for (const m of mediaItems) {
