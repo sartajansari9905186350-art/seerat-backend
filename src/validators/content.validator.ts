@@ -28,6 +28,7 @@ export const removeContentSchema = z.object({
 
 export const flagContentSchema = z.object({
   contentType: z.enum(['POST', 'REEL']),
+  reason: z.string().optional(),
   notes: z.string().optional().default('Flagged for senior theological review')
 });
 

@@ -75,12 +75,13 @@ export class ReviewController {
   async flag(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
     try {
       const { id } = req.params;
-      const { contentType = 'POST', notes = '' } = req.body;
+      const { contentType = 'POST', reason = '', notes = '' } = req.body;
+      const fullNotes = reason ? (notes ? `${reason} - ${notes}` : reason) : (notes || 'Flagged for senior theological review');
       const admin = req.admin!;
       const ipAddress = (req.headers['x-forwarded-for'] as string) || req.ip || '127.0.0.1';
       const userAgent = req.headers['user-agent'];
 
-      await moderationService.flagContent(id, contentType, notes, admin, ipAddress, userAgent);
+      await moderationService.flagContent(id, contentType, fullNotes, admin, ipAddress, userAgent);
 
       ResponseUtil.success(res, { id, status: 'FLAGGED' }, `${contentType} #${id.slice(0, 8)} flagged for senior theological review.`);
     } catch (err) {

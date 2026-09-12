@@ -134,6 +134,26 @@ const checkAndInitSchema = async (): Promise<void> => {
       logger.warn('Could not ensure blob tables:', photoColErr.message);
     }
 
+    // Ensure user_fcm_tokens table exists for Android Push Notifications
+    try {
+      await query(`
+        CREATE TABLE IF NOT EXISTS user_fcm_tokens (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            token TEXT NOT NULL,
+            device_type VARCHAR(50) DEFAULT 'ANDROID',
+            created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+            CONSTRAINT uq_user_device_token UNIQUE (user_id, token)
+        );
+        CREATE INDEX IF NOT EXISTS idx_user_fcm_tokens_user_id ON user_fcm_tokens(user_id);
+        CREATE INDEX IF NOT EXISTS idx_user_fcm_tokens_token ON user_fcm_tokens(token);
+      `);
+      logger.info('user_fcm_tokens table verified.');
+    } catch (fcmTblErr: any) {
+      logger.warn('Could not ensure user_fcm_tokens table:', fcmTblErr.message);
+    }
+
     // Ensure AI Islamic Content Moderation columns exist across posts, reels, and moderation_reviews
     try {
       await query(`

@@ -6,6 +6,7 @@ import { AuthenticatedUserRequest } from '../middleware/userAuth.middleware';
 import { aiModerationService } from '../services/aiModeration.service';
 import { supabaseStorage } from '../services/supabaseStorage.service';
 import { videoStorage } from '../services/videoStorage.service';
+import { fcmService } from '../services/fcm.service';
 
 export class MobilePostController {
   async uploadPhoto(req: AuthenticatedUserRequest, res: Response, next: NextFunction): Promise<void> {
@@ -135,12 +136,30 @@ export class MobilePostController {
           [uuidv4(), `${req.user!.name} submitted a new post for Islamic review.`, postId]
         );
 
+        // User Inbox notification (Mandatory: "Your Post has been submitted for review.")
+        await client.query(
+          `INSERT INTO notifications (id, user_id, type, post_id, message)
+           VALUES ($1, $2, 'CONTENT_PENDING', $3, 'Your Post has been submitted for review.')`,
+          [uuidv4(), userId, postId]
+        );
+
         // Update user profile post count
         await client.query(
           `UPDATE profiles SET posts_count = posts_count + 1 WHERE user_id = $1`,
           [userId]
         );
       });
+
+      // Dispatch real-time push notification to user device
+      fcmService.sendToUser(userId, {
+        title: 'SEERAT',
+        body: 'Your Post has been submitted for review.',
+        data: {
+          type: 'CONTENT_PENDING',
+          postId: postId,
+          targetScreen: 'SUBMITTED_FOR_REVIEW'
+        }
+      }).catch(() => {});
 
       // Perform AI Islamic content screening (advisory; strictly maintains PENDING_REVIEW)
       let aiResult: any = null;

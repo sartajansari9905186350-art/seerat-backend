@@ -3,6 +3,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { withTransaction, query } from '../config/database';
 import { ResponseUtil } from '../utils/response';
 import { AuthenticatedUserRequest } from '../middleware/userAuth.middleware';
+import { fcmService } from '../services/fcm.service';
 
 export class MobileSocialController {
   async toggleLikePost(req: AuthenticatedUserRequest, res: Response, next: NextFunction): Promise<void> {
@@ -38,6 +39,16 @@ export class MobileSocialController {
                VALUES ($1, $2, $3, 'LIKE', $4, $5)`,
               [uuidv4(), postOwner.rows[0].user_id, userId, postId, `${req.user!.name} liked your post.`]
             );
+            fcmService.sendToUser(postOwner.rows[0].user_id, {
+              title: 'SEERAT',
+              body: `${req.user!.name} liked your post.`,
+              data: {
+                type: 'LIKE',
+                postId: postId,
+                userId: userId,
+                targetScreen: 'POST_DETAIL'
+              }
+            }).catch(() => {});
           }
         }
       });
@@ -80,6 +91,16 @@ export class MobileSocialController {
                VALUES ($1, $2, $3, 'LIKE', $4, $5)`,
               [uuidv4(), reelOwner.rows[0].user_id, userId, reelId, `${req.user!.name} liked your reel.`]
             );
+            fcmService.sendToUser(reelOwner.rows[0].user_id, {
+              title: 'SEERAT',
+              body: `${req.user!.name} liked your reel.`,
+              data: {
+                type: 'LIKE',
+                reelId: reelId,
+                userId: userId,
+                targetScreen: 'REEL_DETAIL'
+              }
+            }).catch(() => {});
           }
         }
       });
@@ -194,6 +215,15 @@ export class MobileSocialController {
              VALUES ($1, $2, $3, 'FOLLOW', $4)`,
             [uuidv4(), followingId, followerId, `${req.user!.name} started following you.`]
           );
+          fcmService.sendToUser(followingId, {
+            title: 'SEERAT',
+            body: `${req.user!.name} started following you.`,
+            data: {
+              type: 'FOLLOW',
+              userId: followerId,
+              targetScreen: 'USER_PROFILE'
+            }
+          }).catch(() => {});
         }
       });
 
@@ -310,31 +340,65 @@ export class MobileSocialController {
           await client.query('UPDATE posts SET comments_count = comments_count + 1 WHERE id = $1', [targetPostId]);
           const postOwner = await client.query('SELECT user_id FROM posts WHERE id = $1', [targetPostId]);
           if (postOwner.rows.length > 0 && postOwner.rows[0].user_id !== userId && (!parentComment || parentComment.user_id !== postOwner.rows[0].user_id)) {
+            const commentMsg = `${req.user!.name} commented on your post: "${content.trim().slice(0, 30)}..."`;
             await client.query(
               `INSERT INTO notifications (id, user_id, actor_id, type, post_id, message)
                VALUES ($1, $2, $3, 'COMMENT', $4, $5)`,
-              [uuidv4(), postOwner.rows[0].user_id, userId, targetPostId, `${req.user!.name} commented on your post: "${content.trim().slice(0, 30)}..."`]
+              [uuidv4(), postOwner.rows[0].user_id, userId, targetPostId, commentMsg]
             );
+            fcmService.sendToUser(postOwner.rows[0].user_id, {
+              title: 'SEERAT',
+              body: commentMsg,
+              data: {
+                type: 'COMMENT',
+                postId: targetPostId,
+                userId: userId,
+                targetScreen: 'POST_DETAIL'
+              }
+            }).catch(() => {});
           }
         } else if (targetReelId) {
           await client.query('UPDATE reels SET comments_count = comments_count + 1 WHERE id = $1', [targetReelId]);
           const reelOwner = await client.query('SELECT user_id FROM reels WHERE id = $1', [targetReelId]);
           if (reelOwner.rows.length > 0 && reelOwner.rows[0].user_id !== userId && (!parentComment || parentComment.user_id !== reelOwner.rows[0].user_id)) {
+            const commentMsg = `${req.user!.name} commented on your reel: "${content.trim().slice(0, 30)}..."`;
             await client.query(
               `INSERT INTO notifications (id, user_id, actor_id, type, reel_id, message)
                VALUES ($1, $2, $3, 'COMMENT', $4, $5)`,
-              [uuidv4(), reelOwner.rows[0].user_id, userId, targetReelId, `${req.user!.name} commented on your reel: "${content.trim().slice(0, 30)}..."`]
+              [uuidv4(), reelOwner.rows[0].user_id, userId, targetReelId, commentMsg]
             );
+            fcmService.sendToUser(reelOwner.rows[0].user_id, {
+              title: 'SEERAT',
+              body: commentMsg,
+              data: {
+                type: 'COMMENT',
+                reelId: targetReelId,
+                userId: userId,
+                targetScreen: 'REEL_DETAIL'
+              }
+            }).catch(() => {});
           }
         }
 
         // Notify parent comment author if this is a reply
         if (parentComment && parentComment.user_id !== userId) {
+          const replyMsg = `${req.user!.name} replied to your comment: "${content.trim().slice(0, 30)}..."`;
           await client.query(
             `INSERT INTO notifications (id, user_id, actor_id, type, ${targetPostId ? 'post_id' : 'reel_id'}, message)
              VALUES ($1, $2, $3, 'COMMENT', $4, $5)`,
-            [uuidv4(), parentComment.user_id, userId, targetPostId || targetReelId, `${req.user!.name} replied to your comment: "${content.trim().slice(0, 30)}..."`]
+            [uuidv4(), parentComment.user_id, userId, targetPostId || targetReelId, replyMsg]
           );
+          fcmService.sendToUser(parentComment.user_id, {
+            title: 'SEERAT',
+            body: replyMsg,
+            data: {
+              type: 'COMMENT',
+              postId: targetPostId || '',
+              reelId: targetReelId || '',
+              userId: userId,
+              targetScreen: targetPostId ? 'POST_DETAIL' : 'REEL_DETAIL'
+            }
+          }).catch(() => {});
         }
       });
 
@@ -521,11 +585,23 @@ export class MobileSocialController {
           if (commentOwnerId && commentOwnerId !== userId) {
             const targetPostId = commentCheck.rows[0].post_id;
             const targetReelId = commentCheck.rows[0].reel_id;
+            const likeCommentMsg = `${req.user!.name} liked your comment.`;
             await client.query(
               `INSERT INTO notifications (id, user_id, actor_id, type, ${targetPostId ? 'post_id' : targetReelId ? 'reel_id' : 'post_id'}, message)
                VALUES ($1, $2, $3, 'LIKE', $4, $5)`,
-              [uuidv4(), commentOwnerId, userId, targetPostId || targetReelId || null, `${req.user!.name} liked your comment.`]
+              [uuidv4(), commentOwnerId, userId, targetPostId || targetReelId || null, likeCommentMsg]
             );
+            fcmService.sendToUser(commentOwnerId, {
+              title: 'SEERAT',
+              body: likeCommentMsg,
+              data: {
+                type: 'LIKE',
+                postId: targetPostId || '',
+                reelId: targetReelId || '',
+                userId: userId,
+                targetScreen: targetPostId ? 'POST_DETAIL' : 'REEL_DETAIL'
+              }
+            }).catch(() => {});
           }
         }
       });

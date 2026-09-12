@@ -4,6 +4,7 @@ import { auditRepository } from '../repositories/audit.repository';
 import { contentRepository } from '../repositories/content.repository';
 import { ContentType, RejectionReason } from '../models/content.model';
 import { AuthTokenPayload } from '../models/admin.model';
+import { fcmService } from './fcm.service';
 
 export class ModerationService {
   async getQueue(options: {
@@ -52,10 +53,20 @@ export class ModerationService {
 
       // Notify User
       await client.query(
-        `INSERT INTO notifications (id, user_id, type, message)
-         VALUES ($1, $2, 'CONTENT_APPROVED', $3)`,
-        [uuidv4(), userId, `Your Islamic ${contentType.toLowerCase()} has been approved and published to SEERAT.`]
+        `INSERT INTO notifications (id, user_id, type, ${contentType === 'POST' ? 'post_id' : 'reel_id'}, message)
+         VALUES ($1, $2, 'CONTENT_APPROVED', $3, 'Your content has been approved and is now public.')`,
+        [uuidv4(), userId, id]
       );
+      fcmService.sendToUser(userId, {
+        title: 'SEERAT',
+        body: 'Your content has been approved and is now public.',
+        data: {
+          type: 'CONTENT_APPROVED',
+          postId: contentType === 'POST' ? id : '',
+          reelId: contentType === 'REEL' ? id : '',
+          targetScreen: contentType === 'POST' ? 'POST_DETAIL' : 'REEL_DETAIL'
+        }
+      }).catch(() => {});
 
       // Record Audit Log
       await auditRepository.record(
@@ -110,10 +121,20 @@ export class ModerationService {
       );
 
       await client.query(
-        `INSERT INTO notifications (id, user_id, type, message)
-         VALUES ($1, $2, 'CONTENT_REJECTED', $3)`,
-        [uuidv4(), userId, `Your submission could not be published. Reason: ${fullReason}`]
+        `INSERT INTO notifications (id, user_id, type, ${contentType === 'POST' ? 'post_id' : 'reel_id'}, message)
+         VALUES ($1, $2, 'CONTENT_REJECTED', $3, $4)`,
+        [uuidv4(), userId, id, `Your content was rejected. Reason: ${fullReason}`]
       );
+      fcmService.sendToUser(userId, {
+        title: 'SEERAT',
+        body: `Your content was rejected. Reason: ${fullReason}`,
+        data: {
+          type: 'CONTENT_REJECTED',
+          postId: contentType === 'POST' ? id : '',
+          reelId: contentType === 'REEL' ? id : '',
+          targetScreen: 'INBOX'
+        }
+      }).catch(() => {});
 
       await auditRepository.record(
         {
@@ -169,6 +190,22 @@ export class ModerationService {
          VALUES ($1, 'FLAGGED_CONTENT', 'Content Flagged for Senior Review', $2, $3, $4, FALSE)`,
         [uuidv4(), `${admin.name} flagged ${contentType} #${id.slice(0, 8)} for senior theological review: ${notes}`, contentType, id]
       );
+
+      await client.query(
+        `INSERT INTO notifications (id, user_id, type, ${contentType === 'POST' ? 'post_id' : 'reel_id'}, message)
+         VALUES ($1, $2, 'CONTENT_FLAGGED', $3, 'Your content requires additional review.')`,
+        [uuidv4(), userId, id]
+      );
+      fcmService.sendToUser(userId, {
+        title: 'SEERAT',
+        body: 'Your content requires additional review.',
+        data: {
+          type: 'CONTENT_FLAGGED',
+          postId: contentType === 'POST' ? id : '',
+          reelId: contentType === 'REEL' ? id : '',
+          targetScreen: 'INBOX'
+        }
+      }).catch(() => {});
 
       await auditRepository.record(
         {

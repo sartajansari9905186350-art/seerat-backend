@@ -84,5 +84,8 @@ mobileRouter.post('/reports', authenticateUser, (req, res, next) => mobileReport
 
 // Notifications
 mobileRouter.get('/notifications', authenticateUser, (req, res, next) => mobileNotificationController.getNotifications(req, res, next));
+mobileRouter.post('/notifications/token', authenticateUser, (req, res, next) => mobileNotificationController.registerToken(req, res, next));
+mobileRouter.delete('/notifications/token', authenticateUser, (req, res, next) => mobileNotificationController.removeToken(req, res, next));
 mobileRouter.post('/notifications/:id/read', authenticateUser, (req, res, next) => mobileNotificationController.markAsRead(req, res, next));
 mobileRouter.delete('/notifications/:id', authenticateUser, (req, res, next) => mobileNotificationController.deleteNotification(req, res, next));
+

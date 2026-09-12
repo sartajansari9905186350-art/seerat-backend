@@ -6,6 +6,7 @@ import { AuthenticatedUserRequest } from '../middleware/userAuth.middleware';
 import { aiModerationService } from '../services/aiModeration.service';
 import { videoStorage } from '../services/videoStorage.service';
 import { logger } from '../utils/logger';
+import { fcmService } from '../services/fcm.service';
 
 
 export class MobileReelController {
@@ -263,12 +264,30 @@ export class MobileReelController {
           [uuidv4(), `${req.user!.name} uploaded a new Islamic Reel for review.`, reelId]
         );
 
+        // User Inbox notification (Mandatory: "Your Reel has been submitted for review.")
+        await client.query(
+          `INSERT INTO notifications (id, user_id, type, reel_id, message)
+           VALUES ($1, $2, 'CONTENT_PENDING', $3, 'Your Reel has been submitted for review.')`,
+          [uuidv4(), userId, reelId]
+        );
+
         // Update profile reels count
         await client.query(
           `UPDATE profiles SET reels_count = reels_count + 1 WHERE user_id = $1`,
           [userId]
         );
       });
+
+      // Dispatch real-time push notification to user device
+      fcmService.sendToUser(userId, {
+        title: 'SEERAT',
+        body: 'Your Reel has been submitted for review.',
+        data: {
+          type: 'CONTENT_PENDING',
+          reelId: reelId,
+          targetScreen: 'SUBMITTED_FOR_REVIEW'
+        }
+      }).catch(() => {});
 
       // Perform AI Islamic content screening (advisory; strictly maintains PENDING_REVIEW)
       let aiResult: any = null;

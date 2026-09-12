@@ -2,6 +2,7 @@ import { Response, NextFunction } from 'express';
 import { query } from '../config/database';
 import { ResponseUtil } from '../utils/response';
 import { AuthenticatedUserRequest } from '../middleware/userAuth.middleware';
+import { fcmService } from '../services/fcm.service';
 
 export class MobileNotificationController {
   async getNotifications(req: AuthenticatedUserRequest, res: Response, next: NextFunction): Promise<void> {
@@ -72,6 +73,39 @@ export class MobileNotificationController {
       }
 
       ResponseUtil.success(res, true, 'Notification deleted successfully.');
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  async registerToken(req: AuthenticatedUserRequest, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const userId = req.user!.id;
+      const { token, deviceType } = req.body;
+
+      if (!token || typeof token !== 'string' || token.trim().length === 0) {
+        ResponseUtil.error(res, 'VALIDATION_ERROR', 'FCM device token is required.', 400);
+        return;
+      }
+
+      const success = await fcmService.registerToken(userId, token.trim(), deviceType || 'ANDROID');
+      if (success) {
+        ResponseUtil.success(res, true, 'Device token registered successfully.');
+      } else {
+        ResponseUtil.error(res, 'SERVER_ERROR', 'Failed to register device token.', 500);
+      }
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  async removeToken(req: AuthenticatedUserRequest, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const userId = req.user!.id;
+      const token = req.body?.token || req.query?.token;
+
+      await fcmService.removeToken(userId, typeof token === 'string' ? token.trim() : undefined);
+      ResponseUtil.success(res, true, 'Device token removed successfully.');
     } catch (err) {
       next(err);
     }
