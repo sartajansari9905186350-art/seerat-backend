@@ -460,25 +460,28 @@ export class MobileUserController {
     try {
       const q = ((req.query.q as string) || '').trim();
       const type = ((req.query.type as string) || 'ALL').toUpperCase();
+      const currentUserId = req.user?.id || '00000000-0000-0000-0000-000000000000';
 
       if (!q) {
-        ResponseUtil.success(res, { users: [], posts: [] });
+        ResponseUtil.success(res, { users: [], reels: [], posts: [] });
         return;
       }
 
       const pattern = `%${q}%`;
       let users: any[] = [];
+      let reels: any[] = [];
       let posts: any[] = [];
 
-      if (type === 'ALL' || type === 'USERS') {
+      if (type === 'ALL' || type === 'USERS' || type === 'ACCOUNTS') {
         const usersRes = await query(
           `SELECT u.id, u.name, u.username, u.email, u.is_verified, u.is_private,
-                  p.bio, p.profile_photo, p.followers_count, p.following_count, p.posts_count
+                  p.bio, p.profile_photo, p.followers_count, p.following_count, p.posts_count,
+                  EXISTS(SELECT 1 FROM follows f WHERE f.follower_id = $2 AND f.following_id = u.id) as is_following
            FROM users u
            LEFT JOIN profiles p ON u.id = p.user_id
            WHERE (u.username ILIKE $1 OR u.name ILIKE $1) AND u.status = 'ACTIVE'
-           LIMIT 20`,
-          [pattern]
+           LIMIT 30`,
+          [pattern, currentUserId]
         );
         users = usersRes.rows.map(u => ({
           id: u.id,
@@ -489,31 +492,103 @@ export class MobileUserController {
           profile_photo: u.profile_photo || '',
           is_verified: u.is_verified || false,
           is_private: u.is_private || false,
+          is_following: u.is_following || false,
           followers_count: parseInt(u.followers_count || '0', 10),
           following_count: parseInt(u.following_count || '0', 10),
           posts_count: parseInt(u.posts_count || '0', 10)
         }));
       }
 
+      if (type === 'ALL' || type === 'REELS') {
+        const reelsRes = await query(
+          `SELECT r.id, r.user_id, r.category_id, r.caption, r.reference_source, r.language,
+                  r.audio_title, r.audio_artist, m.duration as duration_seconds, r.status,
+                  r.likes_count, r.comments_count, r.shares_count, r.saves_count, r.views_count,
+                  r.created_at,
+                  c.name as category_name,
+                  m.url as video_url, m.thumbnail_url,
+                  u.id as creator_id, u.name as creator_name, u.username as creator_username,
+                  u.is_verified as creator_verified, u.is_private as creator_private,
+                  prof.profile_photo as creator_photo,
+                  (l.id IS NOT NULL) as is_liked,
+                  (s.id IS NOT NULL) as is_saved,
+                  (f.id IS NOT NULL) as is_following
+           FROM reels r
+           JOIN users u ON r.user_id = u.id
+           LEFT JOIN profiles prof ON u.id = prof.user_id
+           LEFT JOIN categories c ON r.category_id = c.id
+           LEFT JOIN media m ON r.media_id = m.id
+           LEFT JOIN likes l ON l.reel_id = r.id AND l.user_id = $2
+           LEFT JOIN saves s ON s.reel_id = r.id AND s.user_id = $2
+           LEFT JOIN follows f ON f.follower_id = $2 AND f.following_id = r.user_id
+           WHERE r.status = 'APPROVED'
+             AND (u.is_private = FALSE OR r.user_id = $2 OR f.id IS NOT NULL)
+             AND (r.caption ILIKE $1 OR r.reference_source ILIKE $1 OR r.audio_title ILIKE $1 OR c.name ILIKE $1 OR u.name ILIKE $1 OR u.username ILIKE $1)
+           ORDER BY r.created_at DESC
+           LIMIT 30`,
+          [pattern, currentUserId]
+        );
+        reels = reelsRes.rows.map(r => ({
+          id: r.id,
+          user_id: r.user_id,
+          category_id: r.category_id,
+          caption: r.caption,
+          reference_source: r.reference_source,
+          language: r.language,
+          audio_title: r.audio_title,
+          audio_artist: r.audio_artist,
+          duration_seconds: r.duration_seconds || 0,
+          status: r.status,
+          likes_count: parseInt(r.likes_count || '0', 10),
+          comments_count: parseInt(r.comments_count || '0', 10),
+          shares_count: parseInt(r.shares_count || '0', 10),
+          saves_count: parseInt(r.saves_count || '0', 10),
+          views_count: parseInt(r.views_count || '0', 10),
+          created_at: r.created_at,
+          category_name: r.category_name,
+          video_url: r.video_url,
+          thumbnail_url: r.thumbnail_url,
+          is_liked: r.is_liked || false,
+          is_saved: r.is_saved || false,
+          is_following: r.is_following || false,
+          user: {
+            id: r.creator_id,
+            name: r.creator_name,
+            username: r.creator_username,
+            profile_photo: r.creator_photo || '',
+            is_verified: r.creator_verified || false,
+            is_private: r.creator_private || false
+          }
+        }));
+      }
+
       if (type === 'ALL' || type === 'POSTS') {
         const postsRes = await query(
-          `SELECT p.id, p.user_id, p.content_type, p.media_url, p.thumbnail_url,
-                  p.title, p.text_content, p.arabic_text, p.translation_text, p.reference_source,
+          `SELECT p.id, p.user_id, p.content_type, m.url as media_url, m.thumbnail_url,
+                  p.text_content as title, p.text_content, p.arabic_text, p.translation_text, p.reference_source,
                   p.language, p.category_id, p.status, p.likes_count, p.comments_count,
                   p.shares_count, p.saves_count, p.views_count, p.created_at,
                   c.name as category_name, c.arabic_name as category_arabic_name,
                   u.name as creator_name, u.username as creator_username,
                   u.is_verified as creator_verified, u.is_private as creator_private,
-                  pr.profile_photo as creator_photo
+                  pr.profile_photo as creator_photo,
+                  (l.id IS NOT NULL) as is_liked,
+                  (s.id IS NOT NULL) as is_saved,
+                  (f.id IS NOT NULL) as is_following
            FROM posts p
            JOIN categories c ON p.category_id = c.id
            JOIN users u ON p.user_id = u.id
+           LEFT JOIN media m ON p.media_id = m.id
            LEFT JOIN profiles pr ON u.id = pr.user_id
+           LEFT JOIN likes l ON l.post_id = p.id AND l.user_id = $2
+           LEFT JOIN saves s ON s.post_id = p.id AND s.user_id = $2
+           LEFT JOIN follows f ON f.follower_id = $2 AND f.following_id = p.user_id
            WHERE p.status = 'APPROVED'
-             AND (p.title ILIKE $1 OR p.text_content ILIKE $1 OR p.arabic_text ILIKE $1 OR p.translation_text ILIKE $1 OR p.reference_source ILIKE $1 OR c.name ILIKE $1 OR u.name ILIKE $1 OR u.username ILIKE $1)
+             AND (u.is_private = FALSE OR p.user_id = $2 OR f.id IS NOT NULL)
+             AND (p.text_content ILIKE $1 OR p.arabic_text ILIKE $1 OR p.translation_text ILIKE $1 OR p.reference_source ILIKE $1 OR c.name ILIKE $1 OR u.name ILIKE $1 OR u.username ILIKE $1)
            ORDER BY p.created_at DESC
-           LIMIT 20`,
-          [pattern]
+           LIMIT 30`,
+          [pattern, currentUserId]
         );
         posts = postsRes.rows.map(p => ({
           id: p.id,
@@ -537,6 +612,9 @@ export class MobileUserController {
           saves_count: parseInt(p.saves_count || '0', 10),
           views_count: parseInt(p.views_count || '0', 10),
           created_at: p.created_at,
+          is_liked: p.is_liked || false,
+          is_saved: p.is_saved || false,
+          is_following: p.is_following || false,
           user: {
             id: p.user_id,
             name: p.creator_name,
@@ -548,7 +626,7 @@ export class MobileUserController {
         }));
       }
 
-      ResponseUtil.success(res, { users, posts });
+      ResponseUtil.success(res, { users, reels, posts });
     } catch (err) {
       next(err);
     }
