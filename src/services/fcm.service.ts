@@ -39,6 +39,21 @@ class FcmService {
         }
       }
 
+      // Auto-detect secret file in /etc/secrets (Render standard mount) if path not resolved
+      if (!resolvedPath && fs.existsSync('/etc/secrets')) {
+        try {
+          const files = fs.readdirSync('/etc/secrets').filter(f => f.endsWith('.json'));
+          if (files.length > 0) {
+            const candidate = files.find(f => f.toLowerCase().includes('firebase') || f.toLowerCase().includes('seerat') || f.toLowerCase().includes('service')) || files[0];
+            const candidatePath = path.join('/etc/secrets', candidate);
+            if (fs.existsSync(candidatePath)) {
+              resolvedPath = candidatePath;
+              logger.info(`[FCM] Auto-detected Secret File in /etc/secrets: ${candidate}`);
+            }
+          }
+        } catch (_: any) {}
+      }
+
       if (resolvedPath) {
         const fileContent = fs.readFileSync(resolvedPath, 'utf8');
         const serviceAccount = JSON.parse(fileContent);
@@ -211,6 +226,20 @@ class FcmService {
     } catch (err: any) {
       logger.error(`[FCM] Failed to dispatch push notification to user ${userId}:`, err.message);
     }
+  }
+
+  public getStatus() {
+    let availableSecretFiles: string[] = [];
+    if (fs.existsSync('/etc/secrets')) {
+      try {
+        availableSecretFiles = fs.readdirSync('/etc/secrets');
+      } catch (_: any) {}
+    }
+    return {
+      is_initialized: this.isInitialized,
+      configured_path: process.env.FIREBASE_SERVICE_ACCOUNT_PATH || null,
+      available_secret_files: availableSecretFiles,
+    };
   }
 }
 

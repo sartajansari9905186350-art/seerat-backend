@@ -11,6 +11,7 @@ import { env } from './config/env';
 import { logger } from './utils/logger';
 import { query } from './config/database';
 import { ResponseUtil } from './utils/response';
+import { fcmService } from './services/fcm.service';
 
 const app: Express = express();
 
@@ -89,6 +90,7 @@ app.get('/api/health', async (req, res) => {
         has_openrouter_key: !!process.env.OPENROUTER_API_KEY,
         openrouter_model: process.env.OPENROUTER_MODEL || 'openrouter/free'
       },
+      firebase: fcmService.getStatus(),
       timestamp: new Date()
     });
   } catch (err: any) {
