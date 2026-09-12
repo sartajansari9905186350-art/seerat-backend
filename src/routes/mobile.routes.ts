@@ -33,6 +33,9 @@ mobileRouter.post('/ai/assistant', authenticateUser, (req, res, next) => mobileA
 mobileRouter.get('/feed', optionalUserAuth, (req, res, next) => mobileFeedController.getFeed(req, res, next));
 mobileRouter.get('/feed/following', authenticateUser, (req, res, next) => mobileFeedController.getFollowingFeed(req, res, next));
 
+// Search
+mobileRouter.get('/search', optionalUserAuth, (req, res, next) => mobileUserController.search(req, res, next));
+
 // Posts (Create, Upload Media, Delete)
 mobileRouter.post('/posts/upload-photo', authenticateUser, handlePhotoUpload, (req, res, next) => mobilePostController.uploadPhoto(req, res, next));
 mobileRouter.post('/posts/upload-video', authenticateUser, handleVideoUpload, (req, res, next) => mobilePostController.uploadVideo(req, res, next));

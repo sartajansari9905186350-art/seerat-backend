@@ -455,6 +455,104 @@ export class MobileUserController {
       ResponseUtil.error(res, 'PHOTO_REMOVE_FAILED', err.message || 'Failed to remove profile photo.', 400);
     }
   }
+
+  async search(req: AuthenticatedUserRequest, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const q = ((req.query.q as string) || '').trim();
+      const type = ((req.query.type as string) || 'ALL').toUpperCase();
+
+      if (!q) {
+        ResponseUtil.success(res, { users: [], posts: [] });
+        return;
+      }
+
+      const pattern = `%${q}%`;
+      let users: any[] = [];
+      let posts: any[] = [];
+
+      if (type === 'ALL' || type === 'USERS') {
+        const usersRes = await query(
+          `SELECT u.id, u.name, u.username, u.email, u.is_verified, u.is_private,
+                  p.bio, p.profile_photo, p.followers_count, p.following_count, p.posts_count
+           FROM users u
+           LEFT JOIN profiles p ON u.id = p.user_id
+           WHERE (u.username ILIKE $1 OR u.name ILIKE $1) AND u.status = 'ACTIVE'
+           LIMIT 20`,
+          [pattern]
+        );
+        users = usersRes.rows.map(u => ({
+          id: u.id,
+          name: u.name,
+          username: u.username,
+          email: u.email,
+          bio: u.bio || '',
+          profile_photo: u.profile_photo || '',
+          is_verified: u.is_verified || false,
+          is_private: u.is_private || false,
+          followers_count: parseInt(u.followers_count || '0', 10),
+          following_count: parseInt(u.following_count || '0', 10),
+          posts_count: parseInt(u.posts_count || '0', 10)
+        }));
+      }
+
+      if (type === 'ALL' || type === 'POSTS') {
+        const postsRes = await query(
+          `SELECT p.id, p.user_id, p.content_type, p.media_url, p.thumbnail_url,
+                  p.title, p.text_content, p.arabic_text, p.translation_text, p.reference_source,
+                  p.language, p.category_id, p.status, p.likes_count, p.comments_count,
+                  p.shares_count, p.saves_count, p.views_count, p.created_at,
+                  c.name as category_name, c.arabic_name as category_arabic_name,
+                  u.name as creator_name, u.username as creator_username,
+                  u.is_verified as creator_verified, u.is_private as creator_private,
+                  pr.profile_photo as creator_photo
+           FROM posts p
+           JOIN categories c ON p.category_id = c.id
+           JOIN users u ON p.user_id = u.id
+           LEFT JOIN profiles pr ON u.id = pr.user_id
+           WHERE p.status = 'APPROVED'
+             AND (p.title ILIKE $1 OR p.text_content ILIKE $1 OR p.arabic_text ILIKE $1 OR p.translation_text ILIKE $1 OR p.reference_source ILIKE $1 OR c.name ILIKE $1 OR u.name ILIKE $1 OR u.username ILIKE $1)
+           ORDER BY p.created_at DESC
+           LIMIT 20`,
+          [pattern]
+        );
+        posts = postsRes.rows.map(p => ({
+          id: p.id,
+          user_id: p.user_id,
+          content_type: p.content_type,
+          media_url: p.media_url,
+          thumbnail_url: p.thumbnail_url,
+          title: p.title,
+          text_content: p.text_content,
+          arabic_text: p.arabic_text,
+          translation_text: p.translation_text,
+          reference_source: p.reference_source,
+          language: p.language,
+          category_id: p.category_id,
+          category_name: p.category_name,
+          category_arabic_name: p.category_arabic_name,
+          status: p.status,
+          likes_count: parseInt(p.likes_count || '0', 10),
+          comments_count: parseInt(p.comments_count || '0', 10),
+          shares_count: parseInt(p.shares_count || '0', 10),
+          saves_count: parseInt(p.saves_count || '0', 10),
+          views_count: parseInt(p.views_count || '0', 10),
+          created_at: p.created_at,
+          user: {
+            id: p.user_id,
+            name: p.creator_name,
+            username: p.creator_username,
+            profile_photo: p.creator_photo || '',
+            is_verified: p.creator_verified || false,
+            is_private: p.creator_private || false
+          }
+        }));
+      }
+
+      ResponseUtil.success(res, { users, posts });
+    } catch (err) {
+      next(err);
+    }
+  }
 }
 
 export const mobileUserController = new MobileUserController();
