@@ -70,6 +70,7 @@ export class MobileReelController {
         LEFT JOIN saves s ON s.reel_id = r.id AND s.user_id = $1
         LEFT JOIN follows f ON f.follower_id = $1 AND f.following_id = r.user_id
         WHERE r.status = 'APPROVED'
+          AND (u.is_private = FALSE OR r.user_id = $1 OR f.id IS NOT NULL)
           AND ($1 = '00000000-0000-0000-0000-000000000000' OR r.id NOT IN (SELECT reel_id FROM not_interested_reels WHERE user_id = $1))
         ORDER BY r.created_at DESC
         LIMIT $2 OFFSET $3

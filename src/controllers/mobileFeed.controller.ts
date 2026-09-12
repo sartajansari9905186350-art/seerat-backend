@@ -20,10 +20,12 @@ export class MobileFeedController {
         conditions.push(`(LOWER(c.slug) = LOWER($${params.length}) OR LOWER(c.name) = LOWER($${params.length}) OR CAST(c.id AS TEXT) = $${params.length})`);
       }
 
-      const whereClause = `WHERE ${conditions.join(' AND ')}`;
-
       params.push(currentUserId);
       const currentUserIdParamIndex = params.length;
+
+      conditions.push(`(u.is_private = FALSE OR p.user_id = $${currentUserIdParamIndex} OR f.id IS NOT NULL)`);
+
+      const whereClause = `WHERE ${conditions.join(' AND ')}`;
 
       params.push(limitNum, offset);
       const limitParamIndex = params.length - 1;

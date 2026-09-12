@@ -11,7 +11,7 @@ export class MobileUserController {
       const currentUserId = req.user?.id || '00000000-0000-0000-0000-000000000000';
 
       const userRes = await query(
-        `SELECT u.id, u.name, u.username, u.email, u.phone, u.is_verified, u.status,
+        `SELECT u.id, u.name, u.username, u.email, u.phone, u.is_verified, u.is_private, u.status,
                 p.bio, p.profile_photo, p.followers_count, p.following_count, p.posts_count, p.reels_count,
                 (f.id IS NOT NULL) as is_following
          FROM users u
@@ -36,6 +36,7 @@ export class MobileUserController {
         bio: u.bio || '',
         profile_photo: u.profile_photo || '',
         is_verified: u.is_verified || false,
+        is_private: u.is_private || false,
         status: u.status,
         followers_count: parseInt(u.followers_count || '0', 10),
         following_count: parseInt(u.following_count || '0', 10),
@@ -53,10 +54,15 @@ export class MobileUserController {
   async updateProfile(req: AuthenticatedUserRequest, res: Response, next: NextFunction): Promise<void> {
     try {
       const userId = req.user!.id;
-      const { name, bio, profilePhoto } = req.body;
+      const { name, bio, profilePhoto, isPrivate, is_private } = req.body;
 
       if (name) {
         await query('UPDATE users SET name = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2', [name.trim(), userId]);
+      }
+
+      const privateVal = isPrivate !== undefined ? isPrivate : is_private;
+      if (privateVal !== undefined) {
+        await query('UPDATE users SET is_private = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2', [Boolean(privateVal), userId]);
       }
 
       if (bio !== undefined || profilePhoto !== undefined) {
@@ -71,7 +77,7 @@ export class MobileUserController {
       }
 
       const userRes = await query(
-        `SELECT u.id, u.name, u.username, u.email, u.phone, u.is_verified, u.status,
+        `SELECT u.id, u.name, u.username, u.email, u.phone, u.is_verified, u.is_private, u.status,
                 p.bio, p.profile_photo, p.followers_count, p.following_count, p.posts_count, p.reels_count
          FROM users u
          LEFT JOIN profiles p ON u.id = p.user_id
@@ -89,6 +95,7 @@ export class MobileUserController {
         bio: u.bio || '',
         profile_photo: u.profile_photo || '',
         is_verified: u.is_verified || false,
+        is_private: u.is_private || false,
         status: u.status,
         followers_count: parseInt(u.followers_count || '0', 10),
         following_count: parseInt(u.following_count || '0', 10),
@@ -118,6 +125,20 @@ export class MobileUserController {
       const { userId } = req.params;
       const currentUserId = req.user?.id || '00000000-0000-0000-0000-000000000000';
       const isOwner = currentUserId === userId;
+
+      const targetUserCheck = await query('SELECT is_private FROM users WHERE id = $1', [userId]);
+      if (targetUserCheck.rows.length === 0) {
+        ResponseUtil.error(res, 'USER_NOT_FOUND', 'User does not exist.', 404);
+        return;
+      }
+      const isTargetPrivate = targetUserCheck.rows[0].is_private || false;
+      if (isTargetPrivate && !isOwner) {
+        const followCheck = await query("SELECT id FROM follows WHERE follower_id = $1 AND following_id = $2 AND status = 'ACCEPTED'", [currentUserId, userId]);
+        if (followCheck.rows.length === 0) {
+          ResponseUtil.success(res, []);
+          return;
+        }
+      }
 
       const statusCondition = isOwner ? "p.status IN ('APPROVED', 'PENDING_REVIEW')" : "p.status = 'APPROVED'";
 
@@ -191,6 +212,20 @@ export class MobileUserController {
       const { userId } = req.params;
       const currentUserId = req.user?.id || '00000000-0000-0000-0000-000000000000';
       const isOwner = currentUserId === userId;
+
+      const targetUserCheck = await query('SELECT is_private FROM users WHERE id = $1', [userId]);
+      if (targetUserCheck.rows.length === 0) {
+        ResponseUtil.error(res, 'USER_NOT_FOUND', 'User does not exist.', 404);
+        return;
+      }
+      const isTargetPrivate = targetUserCheck.rows[0].is_private || false;
+      if (isTargetPrivate && !isOwner) {
+        const followCheck = await query("SELECT id FROM follows WHERE follower_id = $1 AND following_id = $2 AND status = 'ACCEPTED'", [currentUserId, userId]);
+        if (followCheck.rows.length === 0) {
+          ResponseUtil.success(res, []);
+          return;
+        }
+      }
 
       const statusCondition = isOwner ? "r.status IN ('APPROVED', 'PENDING_REVIEW')" : "r.status = 'APPROVED'";
 
