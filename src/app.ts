@@ -12,6 +12,8 @@ import { logger } from './utils/logger';
 import { query } from './config/database';
 import { ResponseUtil } from './utils/response';
 import { fcmService } from './services/fcm.service';
+import { b2Storage } from './services/b2Storage.service';
+import { getDefaultThumbnailBuffer } from './assets/defaultThumbnail';
 
 const app: Express = express();
 
@@ -40,58 +42,17 @@ app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 // Health check endpoint
-app.get('/api/health', async (req, res) => {
+app.get('/api/health', async (_req, res) => {
   try {
-    const dbCheck = await query('SELECT 1 as healthy');
-    let adminsCount = 0;
-    let adminAccounts: any[] = [];
-
-    try {
-      const adminCheck = await query(`
-        SELECT id, name, email, role, status, 
-               (password_hash IS NOT NULL AND (password_hash LIKE '$2a$%' OR password_hash LIKE '$2b$%' OR password_hash LIKE '$2y$%') AND LENGTH(password_hash) = 60) as has_valid_bcrypt_hash,
-               created_at
-        FROM admin_users
-        ORDER BY created_at ASC
-      `);
-      adminsCount = adminCheck.rows.length;
-      adminAccounts = adminCheck.rows.map(r => ({
-        id: r.id,
-        name: r.name,
-        email: r.email,
-        role: r.role,
-        status: r.status,
-        has_valid_bcrypt_hash: r.has_valid_bcrypt_hash,
-        created_at: r.created_at
-      }));
-    } catch (adminErr: any) {
-      // Table might not exist yet
-    }
-
-    let dbHost = 'unknown';
-    try {
-      const parsed = new URL(process.env.DATABASE_URL || '');
-      dbHost = parsed.hostname;
-    } catch {}
+    await query('SELECT 1 as healthy');
 
     ResponseUtil.success(res, {
       status: 'healthy',
       database: 'connected',
-      db_host: dbHost,
-      admins_count: adminsCount,
-      admin_accounts: adminAccounts,
-      storage: {
-        has_supabase_url: !!process.env.SUPABASE_URL,
-        has_supabase_key: !!process.env.SUPABASE_SERVICE_ROLE_KEY,
-        supabase_url: env.supabaseUrl || 'not-set',
-        bucket: env.supabaseStorageBucket
-      },
-      ai: {
-        has_openrouter_key: !!process.env.OPENROUTER_API_KEY,
-        openrouter_model: process.env.OPENROUTER_MODEL || 'openrouter/free'
-      },
-      firebase: fcmService.getStatus(),
-      timestamp: new Date()
+      b2: {
+        is_configured: b2Storage.isConfigured(),
+        bucket: env.b2BucketName
+      }
     });
   } catch (err: any) {
     ResponseUtil.error(res, 'DB_ERROR', 'Database connectivity error', 500, err.message);
@@ -119,12 +80,74 @@ app.get('/api/uploads/profile-photos/:filename', async (req, res) => {
   }
 });
 
+// Public endpoint to serve lightweight thumbnail images (prevents Coil from downloading full MP4s)
+app.get('/api/uploads/thumbnails/:filename', async (req, res) => {
+  try {
+    const { filename } = req.params;
+    const cleanFilename = path.basename(filename);
+
+    // Default / fallback branded thumbnail
+    if (cleanFilename === 'default.jpg' || cleanFilename === 'default.png' || cleanFilename.startsWith('default')) {
+      const buffer = getDefaultThumbnailBuffer();
+      res.set({
+        'Content-Type': 'image/png',
+        'Cache-Control': 'public, max-age=86400, immutable',
+        'Access-Control-Allow-Origin': '*'
+      });
+      return res.send(buffer);
+    }
+
+    // Check if thumbnail exists in Backblaze B2
+    if (b2Storage.isConfigured()) {
+      const b2Key = `thumbnails/${cleanFilename}`;
+      const hasThumb = await b2Storage.hasObject(b2Key);
+      if (hasThumb) {
+        const streamed = await b2Storage.streamObject(b2Key, undefined, res);
+        if (streamed) {
+          return;
+        }
+      }
+    }
+
+    // Fallback: Return branded lightweight Islamic poster image
+    const fallbackBuffer = getDefaultThumbnailBuffer();
+    res.set({
+      'Content-Type': 'image/png',
+      'Cache-Control': 'public, max-age=86400, immutable',
+      'Access-Control-Allow-Origin': '*'
+    });
+    return res.send(fallbackBuffer);
+  } catch (err: any) {
+    logger.error(`Error retrieving thumbnail ${req.params.filename}:`, err.message);
+    const fallbackBuffer = getDefaultThumbnailBuffer();
+    res.set({
+      'Content-Type': 'image/png',
+      'Cache-Control': 'public, max-age=86400, immutable',
+      'Access-Control-Allow-Origin': '*'
+    });
+    res.send(fallbackBuffer);
+  }
+});
+
 // Public endpoint for video streaming with full HTTP Range (206 Partial Content) support
 app.get('/api/uploads/videos/:filename', async (req, res) => {
   try {
     const { filename } = req.params;
     const cleanFilename = path.basename(filename);
 
+    // 1. Primary: Stream directly from Backblaze B2 if object exists (Zero Supabase database egress)
+    if (b2Storage.isConfigured()) {
+      const b2Key = `videos/${cleanFilename}`;
+      const existsInB2 = await b2Storage.hasObject(b2Key);
+      if (existsInB2) {
+        const streamed = await b2Storage.streamObject(b2Key, req.headers.range, res);
+        if (streamed) {
+          return;
+        }
+      }
+    }
+
+    // 2. Legacy Fallback: Stream from PostgreSQL video_blobs table
     const metaResult = await query(
       'SELECT file_size, mime_type FROM video_blobs WHERE filename = $1',
       [cleanFilename]

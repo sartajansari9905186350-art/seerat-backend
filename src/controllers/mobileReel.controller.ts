@@ -1,10 +1,12 @@
 import { Response, NextFunction } from 'express';
 import { v4 as uuidv4 } from 'uuid';
+import path from 'path';
 import { withTransaction, query } from '../config/database';
 import { ResponseUtil } from '../utils/response';
 import { AuthenticatedUserRequest } from '../middleware/userAuth.middleware';
 import { aiModerationService } from '../services/aiModeration.service';
 import { videoStorage } from '../services/videoStorage.service';
+import { b2Storage } from '../services/b2Storage.service';
 import { logger } from '../utils/logger';
 import { fcmService } from '../services/fcm.service';
 
@@ -106,7 +108,9 @@ export class MobileReelController {
         category_id: r.category_id,
         category_name: r.category_name || 'Quran',
         video_url: r.video_url || '',
-        thumbnail_url: r.thumbnail_url || r.video_url || '',
+        thumbnail_url: (r.thumbnail_url && !r.thumbnail_url.endsWith('.mp4') && r.thumbnail_url !== r.video_url)
+          ? r.thumbnail_url
+          : `${process.env.BASE_URL || (process.env.NODE_ENV === 'production' ? 'https://seerat-backend.onrender.com' : 'http://localhost:5000')}/api/uploads/thumbnails/default.jpg`,
         caption: r.caption || '',
         audio_title: r.audio_title || 'Original Islamic Audio',
         audio_artist: r.audio_artist || 'SEERAT Creator',
@@ -179,7 +183,9 @@ export class MobileReelController {
         category_id: r.category_id,
         category_name: r.category_name || 'Quran',
         video_url: r.video_url || '',
-        thumbnail_url: r.thumbnail_url || r.video_url || '',
+        thumbnail_url: (r.thumbnail_url && !r.thumbnail_url.endsWith('.mp4') && r.thumbnail_url !== r.video_url)
+          ? r.thumbnail_url
+          : `${process.env.BASE_URL || (process.env.NODE_ENV === 'production' ? 'https://seerat-backend.onrender.com' : 'http://localhost:5000')}/api/uploads/thumbnails/default.jpg`,
         caption: r.caption || '',
         audio_title: r.audio_title || 'Original Islamic Audio',
         audio_artist: r.audio_artist || 'SEERAT Creator',
@@ -236,12 +242,16 @@ export class MobileReelController {
       const reelId = uuidv4();
       const mediaId = uuidv4();
 
+      const baseUrl = process.env.BASE_URL || (process.env.NODE_ENV === 'production' ? 'https://seerat-backend.onrender.com' : 'http://localhost:5000');
+      const defaultThumb = `${baseUrl}/api/uploads/thumbnails/default.jpg`;
+      const finalThumbnailUrl = (thumbnailUrl && typeof thumbnailUrl === 'string' && !thumbnailUrl.endsWith('.mp4')) ? thumbnailUrl.trim() : defaultThumb;
+
       await withTransaction(async (client) => {
         // Media Record
         await client.query(
           `INSERT INTO media (id, owner_id, media_type, url, thumbnail_url, status)
            VALUES ($1, $2, 'VIDEO', $3, $4, 'READY')`,
-          [mediaId, userId, videoUrl, thumbnailUrl || videoUrl]
+          [mediaId, userId, videoUrl, finalThumbnailUrl]
         );
 
         // Reel created as PENDING_REVIEW (mandatory moderation)
@@ -363,7 +373,13 @@ export class MobileReelController {
       const userId = req.user!.id;
       const { reelId } = req.params;
 
-      const reelRes = await query('SELECT user_id FROM reels WHERE id = $1', [reelId]);
+      const reelRes = await query(
+        `SELECT r.user_id, r.media_id, m.url
+         FROM reels r
+         LEFT JOIN media m ON r.media_id = m.id
+         WHERE r.id = $1`,
+        [reelId]
+      );
       if (reelRes.rows.length === 0) {
         ResponseUtil.error(res, 'NOT_FOUND', 'Reel not found.', 404);
         return;
@@ -373,6 +389,8 @@ export class MobileReelController {
         ResponseUtil.error(res, 'FORBIDDEN', 'You do not have permission to delete this reel.', 403);
         return;
       }
+
+      const mediaUrl = reelRes.rows[0].url;
 
       await withTransaction(async (client) => {
         await client.query(`UPDATE reels SET status = 'REMOVED', updated_at = CURRENT_TIMESTAMP WHERE id = $1`, [reelId]);
@@ -385,6 +403,14 @@ export class MobileReelController {
           [reelId]
         );
       });
+
+      // Safely delete B2 object if present
+      if (mediaUrl && b2Storage.isConfigured() && mediaUrl.includes('/api/uploads/videos/')) {
+        const filename = path.basename(mediaUrl);
+        b2Storage.deleteObject(`videos/${filename}`).catch((delErr) => {
+          logger.warn(`[ReelDelete] Could not delete B2 object for ${filename}: ${delErr.message}`);
+        });
+      }
 
       ResponseUtil.success(res, { id: reelId, status: 'REMOVED' }, 'Reel deleted successfully.');
     } catch (err) {

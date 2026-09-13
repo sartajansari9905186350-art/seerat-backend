@@ -187,7 +187,9 @@ export class MobileUserController {
         translation_text: r.translation_text || '',
         reference_source: r.reference_source || '',
         media_url: r.media_url,
-        thumbnail_url: r.thumbnail_url,
+        thumbnail_url: (r.thumbnail_url && !r.thumbnail_url.endsWith('.mp4') && r.thumbnail_url !== r.media_url)
+          ? r.thumbnail_url
+          : (r.content_type === 'PHOTO' ? r.media_url : `${process.env.BASE_URL || (process.env.NODE_ENV === 'production' ? 'https://seerat-backend.onrender.com' : 'http://localhost:5000')}/api/uploads/thumbnails/default.jpg`),
         language: r.language || 'en',
         status: r.status,
         likes_count: parseInt(r.likes_count || '0', 10),
@@ -269,7 +271,9 @@ export class MobileUserController {
         category_id: r.category_id,
         category_name: r.category_name || 'Quran',
         video_url: r.video_url || '',
-        thumbnail_url: r.thumbnail_url || '',
+        thumbnail_url: (r.thumbnail_url && !r.thumbnail_url.endsWith('.mp4') && r.thumbnail_url !== r.video_url)
+          ? r.thumbnail_url
+          : `${process.env.BASE_URL || (process.env.NODE_ENV === 'production' ? 'https://seerat-backend.onrender.com' : 'http://localhost:5000')}/api/uploads/thumbnails/default.jpg`,
         caption: r.caption || '',
         audio_title: r.audio_title || 'Original Islamic Audio',
         audio_artist: r.audio_artist || 'SEERAT Creator',
@@ -299,7 +303,7 @@ export class MobileUserController {
       const currentUserId = req.user?.id || '00000000-0000-0000-0000-000000000000';
 
       const sql = `
-        SELECT u.id, u.name, u.username, u.email, u.phone, u.is_verified,
+        SELECT u.id, u.name, u.username, u.email, u.phone, u.is_verified, u.is_private,
                p.bio, p.profile_photo, p.followers_count, p.following_count,
                EXISTS(SELECT 1 FROM follows f2 WHERE f2.follower_id = $2 AND f2.following_id = u.id) as is_following
         FROM follows f
@@ -317,6 +321,7 @@ export class MobileUserController {
         bio: u.bio || '',
         profile_photo: u.profile_photo || '',
         is_verified: u.is_verified || false,
+        is_private: u.is_private || false,
         followers_count: parseInt(u.followers_count || '0', 10),
         following_count: parseInt(u.following_count || '0', 10),
         is_following: u.is_following || false
@@ -334,7 +339,7 @@ export class MobileUserController {
       const currentUserId = req.user?.id || '00000000-0000-0000-0000-000000000000';
 
       const sql = `
-        SELECT u.id, u.name, u.username, u.email, u.phone, u.is_verified,
+        SELECT u.id, u.name, u.username, u.email, u.phone, u.is_verified, u.is_private,
                p.bio, p.profile_photo, p.followers_count, p.following_count,
                EXISTS(SELECT 1 FROM follows f2 WHERE f2.follower_id = $2 AND f2.following_id = u.id) as is_following
         FROM follows f
@@ -352,6 +357,7 @@ export class MobileUserController {
         bio: u.bio || '',
         profile_photo: u.profile_photo || '',
         is_verified: u.is_verified || false,
+        is_private: u.is_private || false,
         followers_count: parseInt(u.followers_count || '0', 10),
         following_count: parseInt(u.following_count || '0', 10),
         is_following: u.is_following || false
@@ -547,7 +553,9 @@ export class MobileUserController {
           created_at: r.created_at,
           category_name: r.category_name,
           video_url: r.video_url,
-          thumbnail_url: r.thumbnail_url,
+          thumbnail_url: (r.thumbnail_url && !r.thumbnail_url.endsWith('.mp4') && r.thumbnail_url !== r.video_url)
+            ? r.thumbnail_url
+            : `${process.env.BASE_URL || (process.env.NODE_ENV === 'production' ? 'https://seerat-backend.onrender.com' : 'http://localhost:5000')}/api/uploads/thumbnails/default.jpg`,
           is_liked: r.is_liked || false,
           is_saved: r.is_saved || false,
           is_following: r.is_following || false,
@@ -595,7 +603,9 @@ export class MobileUserController {
           user_id: p.user_id,
           content_type: p.content_type,
           media_url: p.media_url,
-          thumbnail_url: p.thumbnail_url,
+          thumbnail_url: (p.thumbnail_url && !p.thumbnail_url.endsWith('.mp4') && p.thumbnail_url !== p.media_url)
+            ? p.thumbnail_url
+            : (p.content_type === 'PHOTO' ? p.media_url : `${process.env.BASE_URL || (process.env.NODE_ENV === 'production' ? 'https://seerat-backend.onrender.com' : 'http://localhost:5000')}/api/uploads/thumbnails/default.jpg`),
           title: p.title,
           text_content: p.text_content,
           arabic_text: p.arabic_text,

@@ -77,7 +77,9 @@ export class MobileFeedController {
         translation_text: r.translation_text || '',
         reference_source: r.reference_source || '',
         media_url: r.media_url,
-        thumbnail_url: r.thumbnail_url,
+        thumbnail_url: (r.thumbnail_url && !r.thumbnail_url.endsWith('.mp4') && r.thumbnail_url !== r.media_url)
+          ? r.thumbnail_url
+          : (r.content_type === 'PHOTO' ? r.media_url : `${process.env.BASE_URL || (process.env.NODE_ENV === 'production' ? 'https://seerat-backend.onrender.com' : 'http://localhost:5000')}/api/uploads/thumbnails/default.jpg`),
         language: r.language || 'en',
         status: r.status,
         likes_count: parseInt(r.likes_count || '0', 10),
@@ -151,7 +153,9 @@ export class MobileFeedController {
         translation_text: r.translation_text || '',
         reference_source: r.reference_source || '',
         media_url: r.media_url,
-        thumbnail_url: r.thumbnail_url,
+        thumbnail_url: (r.thumbnail_url && !r.thumbnail_url.endsWith('.mp4') && r.thumbnail_url !== r.media_url)
+          ? r.thumbnail_url
+          : (r.content_type === 'PHOTO' ? r.media_url : `${process.env.BASE_URL || (process.env.NODE_ENV === 'production' ? 'https://seerat-backend.onrender.com' : 'http://localhost:5000')}/api/uploads/thumbnails/default.jpg`),
         language: r.language || 'en',
         status: r.status,
         likes_count: parseInt(r.likes_count || '0', 10),

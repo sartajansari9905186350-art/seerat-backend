@@ -23,5 +23,10 @@ export const env = {
     return match ? `https://${match[1]}.supabase.co` : '';
   })(),
   supabaseServiceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY || '',
-  supabaseStorageBucket: process.env.SUPABASE_STORAGE_BUCKET || 'profile-photos'
+  supabaseStorageBucket: process.env.SUPABASE_STORAGE_BUCKET || 'profile-photos',
+  b2ApplicationKeyId: process.env.B2_APPLICATION_KEY_ID || '',
+  b2ApplicationKey: process.env.B2_APPLICATION_KEY || '',
+  b2BucketName: process.env.B2_BUCKET_NAME || 'seerat-media',
+  b2Endpoint: process.env.B2_ENDPOINT || 'https://s3.us-east-005.backblazeb2.com',
+  b2Region: process.env.B2_REGION || 'us-east-005'
 };

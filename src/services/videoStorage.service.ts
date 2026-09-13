@@ -4,6 +4,7 @@ import path from 'path';
 import { env } from '../config/env';
 import { logger } from '../utils/logger';
 import { query } from '../config/database';
+import { b2Storage } from './b2Storage.service';
 
 const ALLOWED_VIDEO_MIME_TYPES = [
   'video/mp4',
@@ -120,13 +121,14 @@ export class VideoStorageService {
   }
 
   /**
-   * Upload video to persistent storage (PostgreSQL video_blobs + Supabase Storage fallback)
+   * Upload video to persistent storage (Backblaze B2 primary + PostgreSQL video_blobs fallback)
    */
   async uploadVideo(file: Express.Multer.File, userId: string): Promise<{
     videoUrl: string;
     filename: string;
     fileSize: number;
     mimeType: string;
+    storageProvider?: 'B2' | 'LOCAL';
   }> {
     const validation = this.validateVideo(file);
     if (!validation.valid) {
@@ -137,41 +139,30 @@ export class VideoStorageService {
     const uniqueFilename = `reel_${cleanUserId}_${Date.now()}_${uuidv4().slice(0, 8)}${validation.extension}`;
     const fileSize = file.size || file.buffer.length;
     const mimeType = validation.mimeType;
+    const baseUrl = process.env.BASE_URL || (process.env.NODE_ENV === 'production' ? 'https://seerat-backend.onrender.com' : `http://localhost:${env.port}`);
+    const videoUrl = `${baseUrl}/api/uploads/videos/${uniqueFilename}`;
 
-    // 1. If Supabase is configured and has key, attempt Supabase Storage
-    if (this.client && env.supabaseServiceRoleKey) {
+    // 1. Primary: Backblaze B2 Storage (Zero database egress, zero local disk loss)
+    if (b2Storage.isConfigured()) {
+      const b2Key = `videos/${uniqueFilename}`;
       try {
-        const storagePath = `reels/${cleanUserId}/${uniqueFilename}`;
-        const { error: uploadError } = await this.client.storage
-          .from(this.bucketName)
-          .upload(storagePath, file.buffer, {
-            contentType: mimeType,
-            cacheControl: '31536000',
-            upsert: true
-          });
-
-        if (!uploadError) {
-          const { data: publicUrlData } = this.client.storage
-            .from(this.bucketName)
-            .getPublicUrl(storagePath);
-
-          if (publicUrlData?.publicUrl) {
-            logger.info(`[VideoStorage] Video uploaded to Supabase Storage: ${storagePath}`);
-            return {
-              videoUrl: publicUrlData.publicUrl,
-              filename: uniqueFilename,
-              fileSize,
-              mimeType
-            };
-          }
-        }
-      } catch (sbErr: any) {
-        logger.warn(`[VideoStorage] Supabase upload error: ${sbErr.message}, storing in PostgreSQL video_blobs...`);
+        await b2Storage.uploadVideo(file.buffer, mimeType, b2Key);
+        logger.info(`[VideoStorage] Video stored successfully in B2 (${b2Key}). Public URL: ${videoUrl}`);
+        return {
+          videoUrl,
+          filename: uniqueFilename,
+          fileSize,
+          mimeType,
+          storageProvider: 'B2'
+        };
+      } catch (b2Err: any) {
+        logger.error(`[VideoStorage] B2 upload failed: ${b2Err.message}`);
+        throw new Error('Failed to upload video to media storage. Please try again.');
       }
     }
 
-    // 2. Persistent PostgreSQL BYTEA storage (Zero data loss on Render ephemeral dynos)
-    logger.info(`[VideoStorage] Storing video ${uniqueFilename} (${(fileSize / (1024 * 1024)).toFixed(2)} MB) in PostgreSQL video_blobs...`);
+    // 2. Fallback: Persistent PostgreSQL BYTEA storage (Used when B2 is unconfigured in dev)
+    logger.info(`[VideoStorage] B2 unconfigured. Storing video ${uniqueFilename} (${(fileSize / (1024 * 1024)).toFixed(2)} MB) in PostgreSQL video_blobs...`);
     const blobId = uuidv4();
     await query(
       `INSERT INTO video_blobs (id, filename, mime_type, file_size, video_data)
@@ -181,15 +172,13 @@ export class VideoStorageService {
       [blobId, uniqueFilename, mimeType, fileSize, file.buffer]
     );
 
-    const baseUrl = process.env.BASE_URL || (process.env.NODE_ENV === 'production' ? 'https://seerat-backend.onrender.com' : `http://localhost:${env.port}`);
-    const videoUrl = `${baseUrl}/api/uploads/videos/${uniqueFilename}`;
-
-    logger.info(`[VideoStorage] Video stored successfully. Public URL: ${videoUrl}`);
+    logger.info(`[VideoStorage] Video stored successfully in PostgreSQL video_blobs. Public URL: ${videoUrl}`);
     return {
       videoUrl,
       filename: uniqueFilename,
       fileSize,
-      mimeType
+      mimeType,
+      storageProvider: 'LOCAL'
     };
   }
 

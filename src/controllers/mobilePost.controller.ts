@@ -1,3 +1,4 @@
+import path from 'path';
 import { Response, NextFunction } from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import { withTransaction, query } from '../config/database';
@@ -6,7 +7,9 @@ import { AuthenticatedUserRequest } from '../middleware/userAuth.middleware';
 import { aiModerationService } from '../services/aiModeration.service';
 import { supabaseStorage } from '../services/supabaseStorage.service';
 import { videoStorage } from '../services/videoStorage.service';
+import { b2Storage } from '../services/b2Storage.service';
 import { fcmService } from '../services/fcm.service';
+import { logger } from '../utils/logger';
 
 export class MobilePostController {
   async uploadPhoto(req: AuthenticatedUserRequest, res: Response, next: NextFunction): Promise<void> {
@@ -108,10 +111,14 @@ export class MobilePostController {
       await withTransaction(async (client) => {
         if (mediaUrl) {
           mediaId = uuidv4();
+          const isPhoto = contentType === 'PHOTO';
+          const defaultThumb = `${process.env.BASE_URL || (process.env.NODE_ENV === 'production' ? 'https://seerat-backend.onrender.com' : 'http://localhost:5000')}/api/uploads/thumbnails/default.jpg`;
+          const thumbUrl = isPhoto ? mediaUrl : defaultThumb;
+
           await client.query(
             `INSERT INTO media (id, owner_id, media_type, url, thumbnail_url, status)
              VALUES ($1, $2, $3, $4, $5, 'READY')`,
-            [mediaId, userId, contentType === 'PHOTO' ? 'PHOTO' : 'VIDEO', mediaUrl, mediaUrl]
+            [mediaId, userId, isPhoto ? 'PHOTO' : 'VIDEO', mediaUrl, thumbUrl]
           );
         }
 
@@ -226,7 +233,13 @@ export class MobilePostController {
       const userId = req.user!.id;
       const { postId } = req.params;
 
-      const postRes = await query('SELECT user_id FROM posts WHERE id = $1', [postId]);
+      const postRes = await query(
+        `SELECT p.user_id, p.media_id, m.url
+         FROM posts p
+         LEFT JOIN media m ON p.media_id = m.id
+         WHERE p.id = $1`,
+        [postId]
+      );
       if (postRes.rows.length === 0) {
         ResponseUtil.error(res, 'NOT_FOUND', 'Post not found.', 404);
         return;
@@ -236,6 +249,8 @@ export class MobilePostController {
         ResponseUtil.error(res, 'FORBIDDEN', 'You do not have permission to delete this post.', 403);
         return;
       }
+
+      const mediaUrl = postRes.rows[0].url;
 
       await withTransaction(async (client) => {
         await client.query(`UPDATE posts SET status = 'REMOVED', updated_at = CURRENT_TIMESTAMP WHERE id = $1`, [postId]);
@@ -248,6 +263,14 @@ export class MobilePostController {
           [postId]
         );
       });
+
+      // Safely delete B2 object if present
+      if (mediaUrl && b2Storage.isConfigured() && mediaUrl.includes('/api/uploads/videos/')) {
+        const filename = path.basename(mediaUrl);
+        b2Storage.deleteObject(`videos/${filename}`).catch((delErr) => {
+          logger.warn(`[PostDelete] Could not delete B2 object for ${filename}: ${delErr.message}`);
+        });
+      }
 
       ResponseUtil.success(res, { id: postId, status: 'REMOVED' }, 'Post deleted successfully.');
     } catch (err) {
