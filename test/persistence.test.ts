@@ -1,5 +1,6 @@
 import request from 'supertest';
 import { pool, testConnection, query } from '../src/config/database';
+import { ensurePostgresRunning } from '../database/startDb';
 import app from '../src/app';
 
 async function runPersistenceVerification() {
@@ -9,6 +10,7 @@ async function runPersistenceVerification() {
 
   // Step 1: Health Check before operations
   console.log('🩺 [1/7] Checking Server Health Endpoint & PostgreSQL connectivity...');
+  await ensurePostgresRunning();
   await testConnection();
   const initialHealth = await request(app).get('/api/health');
   if (initialHealth.status !== 200 || initialHealth.body.data?.database !== 'connected') {

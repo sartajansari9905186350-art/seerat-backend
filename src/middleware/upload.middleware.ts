@@ -85,6 +85,13 @@ export const uploadVideoMulter = multer({
     const hasValidExt = ['.mp4', '.mov', '.mkv', '.webm', '.3gp', '.avi', '.m4v'].some(e => ext.endsWith(e));
     const hasValidMime = ALLOWED_VIDEO_MIMES.some(m => mime.includes(m.replace('video/', '')));
 
+    if (file.fieldname === 'thumbnail') {
+      const isImg = mime.startsWith('image/') || ['.jpg', '.jpeg', '.png', '.webp'].some(e => ext.endsWith(e));
+      if (isImg) {
+        return cb(null, true);
+      }
+    }
+
     if (hasValidMime || hasValidExt || mime.startsWith('video/')) {
       cb(null, true);
     } else {
@@ -95,7 +102,8 @@ export const uploadVideoMulter = multer({
   { name: 'video', maxCount: 1 },
   { name: 'reel', maxCount: 1 },
   { name: 'file', maxCount: 1 },
-  { name: 'media', maxCount: 1 }
+  { name: 'media', maxCount: 1 },
+  { name: 'thumbnail', maxCount: 1 }
 ]);
 
 export const handleVideoUpload = (req: Request, res: Response, next: NextFunction) => {

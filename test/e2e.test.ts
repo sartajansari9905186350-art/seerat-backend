@@ -3,6 +3,7 @@ import { pool, testConnection } from '../src/config/database';
 import app from '../src/app';
 import { runMigration } from '../database/migrate';
 import { seedDatabase } from '../database/seed';
+import { ensurePostgresRunning } from '../database/startDb';
 
 async function runEndToEndVerification() {
   console.log('\n================================================================');
@@ -11,6 +12,7 @@ async function runEndToEndVerification() {
 
   // 1. Verify Real PostgreSQL database connection
   console.log('📦 [1/10] Connecting to Real PostgreSQL database...');
+  await ensurePostgresRunning();
   await testConnection();
   console.log('✅ Real PostgreSQL database connected.\n');
 

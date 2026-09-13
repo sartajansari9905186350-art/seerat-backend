@@ -2,6 +2,7 @@ import request from 'supertest';
 import { pool, testConnection } from '../src/config/database';
 import { runMigration } from '../database/migrate';
 import { seedDatabase } from '../database/seed';
+import { ensurePostgresRunning } from '../database/startDb';
 import app from '../src/app';
 
 async function runMobileE2ETest() {
@@ -10,6 +11,7 @@ async function runMobileE2ETest() {
   console.log('================================================================\n');
 
   // Verify PostgreSQL Connection
+  await ensurePostgresRunning();
   await testConnection();
   await runMigration();
   await seedDatabase();

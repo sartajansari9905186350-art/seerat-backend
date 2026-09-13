@@ -232,6 +232,58 @@ export class VideoStorageService {
       mimeType: result.rows[0].mime_type || 'video/mp4'
     };
   }
+
+  /**
+   * Upload thumbnail image to Backblaze B2 (or persistent fallback)
+   */
+  async uploadThumbnail(file: Express.Multer.File | { buffer: Buffer; mimetype?: string; originalname?: string }, userId: string): Promise<{
+    thumbnailUrl: string;
+    filename: string;
+    fileSize: number;
+    mimeType: string;
+  }> {
+    const cleanUserId = userId.replace(/[^a-zA-Z0-9_-]/g, '');
+    const mimeType = file.mimetype || 'image/jpeg';
+    const ext = mimeType.includes('webp') ? '.webp' : mimeType.includes('png') ? '.png' : '.jpg';
+    const uniqueFilename = `thumb_${cleanUserId}_${Date.now()}_${uuidv4().slice(0, 8)}${ext}`;
+    const buffer = file.buffer;
+    const fileSize = buffer.length;
+    const baseUrl = process.env.BASE_URL || (process.env.NODE_ENV === 'production' ? 'https://seerat-backend.onrender.com' : `http://localhost:${env.port}`);
+    const thumbnailUrl = `${baseUrl}/api/uploads/thumbnails/${uniqueFilename}`;
+
+    if (b2Storage.isConfigured()) {
+      const b2Key = `thumbnails/${uniqueFilename}`;
+      try {
+        await b2Storage.uploadThumbnail(buffer, mimeType, b2Key);
+        logger.info(`[VideoStorage] Thumbnail stored successfully in B2 (${b2Key}). Public URL: ${thumbnailUrl}`);
+        return {
+          thumbnailUrl,
+          filename: uniqueFilename,
+          fileSize,
+          mimeType
+        };
+      } catch (b2Err: any) {
+        logger.error(`[VideoStorage] B2 thumbnail upload failed: ${b2Err.message}`);
+      }
+    }
+
+    // Fallback: save to video_blobs
+    const blobId = uuidv4();
+    await query(
+      `INSERT INTO video_blobs (id, filename, mime_type, file_size, video_data)
+       VALUES ($1, $2, $3, $4, $5)
+       ON CONFLICT (filename) DO UPDATE
+       SET video_data = EXCLUDED.video_data, file_size = EXCLUDED.file_size, mime_type = EXCLUDED.mime_type`,
+      [blobId, uniqueFilename, mimeType, fileSize, buffer]
+    );
+
+    return {
+      thumbnailUrl,
+      filename: uniqueFilename,
+      fileSize,
+      mimeType
+    };
+  }
 }
 
 export const videoStorage = new VideoStorageService();

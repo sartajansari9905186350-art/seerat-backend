@@ -57,11 +57,24 @@ export class MobilePostController {
 
       const uploadResult = await videoStorage.uploadVideo(req.file, user.id);
 
+      const files = req.files as { [fieldname: string]: Express.Multer.File[] } | undefined;
+      const thumbFile = files?.['thumbnail']?.[0];
+      let thumbnailUrl: string | undefined = undefined;
+      if (thumbFile) {
+        try {
+          const thumbResult = await videoStorage.uploadThumbnail(thumbFile, user.id);
+          thumbnailUrl = thumbResult.thumbnailUrl;
+        } catch (tErr: any) {
+          logger.warn(`[MobilePostController] Thumbnail upload warning: ${tErr.message}`);
+        }
+      }
+
       ResponseUtil.success(
         res,
         {
           media_url: uploadResult.videoUrl,
           video_url: uploadResult.videoUrl,
+          thumbnail_url: thumbnailUrl,
           filename: uploadResult.filename,
           file_size: uploadResult.fileSize,
           mime_type: uploadResult.mimeType,
@@ -86,6 +99,7 @@ export class MobilePostController {
         translationText = '',
         referenceSource = '',
         mediaUrl = null,
+        thumbnailUrl = null,
         language = 'en'
       } = req.body;
 
@@ -113,12 +127,16 @@ export class MobilePostController {
           mediaId = uuidv4();
           const isPhoto = contentType === 'PHOTO';
           const defaultThumb = `${process.env.BASE_URL || (process.env.NODE_ENV === 'production' ? 'https://seerat-backend.onrender.com' : 'http://localhost:5000')}/api/uploads/thumbnails/default.jpg`;
-          const thumbUrl = isPhoto ? mediaUrl : defaultThumb;
+          const finalThumbnailUrl = isPhoto
+            ? mediaUrl
+            : ((thumbnailUrl && typeof thumbnailUrl === 'string' && !thumbnailUrl.endsWith('.mp4') && thumbnailUrl !== mediaUrl)
+                ? thumbnailUrl.trim()
+                : defaultThumb);
 
           await client.query(
             `INSERT INTO media (id, owner_id, media_type, url, thumbnail_url, status)
              VALUES ($1, $2, $3, $4, $5, 'READY')`,
-            [mediaId, userId, isPhoto ? 'PHOTO' : 'VIDEO', mediaUrl, thumbUrl]
+            [mediaId, userId, isPhoto ? 'PHOTO' : 'VIDEO', mediaUrl, finalThumbnailUrl]
           );
         }
 

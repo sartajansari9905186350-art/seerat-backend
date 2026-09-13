@@ -45,18 +45,22 @@ export function getDefaultThumbnailBuffer(): Buffer {
 
   const width = 320;
   const height = 180;
-  // SEERAT brand emerald green: R=15, G=81, B=50 (#0F5132)
+  // Sleek neutral dark slate fallback (prevents bright green placeholder boxes)
   const rowSize = 1 + width * 3;
   const raw = Buffer.alloc(rowSize * height);
 
   for (let y = 0; y < height; y++) {
     const rowStart = y * rowSize;
     raw[rowStart] = 0; // PNG filter None
+    const ratio = y / height;
+    const r = Math.round(15 + ratio * 8);   // ~15 -> 23 (#0f172a to #172554)
+    const g = Math.round(23 + ratio * 10);  // ~23 -> 33
+    const b = Math.round(42 + ratio * 14);  // ~42 -> 56
     for (let x = 0; x < width; x++) {
       const px = rowStart + 1 + x * 3;
-      raw[px] = 15;     // R
-      raw[px + 1] = 81; // G
-      raw[px + 2] = 50; // B
+      raw[px] = r;
+      raw[px + 1] = g;
+      raw[px + 2] = b;
     }
   }
 

@@ -6,6 +6,8 @@ import {
   DeleteObjectCommand
 } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
+import { NodeHttpHandler } from '@smithy/node-http-handler';
+import https from 'https';
 import { Response } from 'express';
 import { Readable } from 'stream';
 import { env } from '../config/env';
@@ -27,6 +29,12 @@ export class B2StorageService {
   private initClient(): void {
     if (env.b2ApplicationKeyId && env.b2ApplicationKey) {
       try {
+        const agent = new https.Agent({
+          keepAlive: true,
+          maxSockets: 50,
+          keepAliveMsecs: 30000
+        });
+
         this.s3Client = new S3Client({
           endpoint: this.endpoint,
           region: this.region,
@@ -34,9 +42,12 @@ export class B2StorageService {
             accessKeyId: env.b2ApplicationKeyId,
             secretAccessKey: env.b2ApplicationKey
           },
-          forcePathStyle: true
+          forcePathStyle: true,
+          requestHandler: new NodeHttpHandler({
+            httpsAgent: agent
+          })
         });
-        logger.info(`[B2Storage] Client initialized for bucket '${this.bucketName}' on endpoint '${this.endpoint}'`);
+        logger.info(`[B2Storage] Client initialized for bucket '${this.bucketName}' on endpoint '${this.endpoint}' with persistent HTTP agent`);
       } catch (err: any) {
         logger.error('[B2Storage] Initialization failed:', err.message);
         this.s3Client = null;
@@ -184,15 +195,20 @@ export class B2StorageService {
 
       const s3Response = await this.s3Client.send(command);
 
-      const status = rangeHeader && s3Response.ContentRange ? 206 : 200;
+      const isPartial = Boolean(
+        (rangeHeader && s3Response.ContentRange) ||
+        s3Response.$metadata?.httpStatusCode === 206
+      );
+      const status = isPartial ? 206 : 200;
       res.status(status);
 
       const headers: Record<string, string> = {
         'Accept-Ranges': 'bytes',
         'Content-Type': s3Response.ContentType || 'video/mp4',
         'Access-Control-Allow-Origin': '*',
+        'Access-Control-Expose-Headers': 'Content-Range, Accept-Ranges, Content-Length',
         'Cross-Origin-Resource-Policy': 'cross-origin',
-        'Cache-Control': 'private, max-age=86400'
+        'Cache-Control': 'public, max-age=31536000, immutable'
       };
 
       if (s3Response.ContentRange) {
@@ -211,14 +227,16 @@ export class B2StorageService {
 
       let isAborted = false;
       res.on('close', () => {
-        isAborted = true;
-        if (typeof stream.destroy === 'function') {
-          stream.destroy();
+        if (!res.writableEnded) {
+          isAborted = true;
+          if (typeof stream.destroy === 'function') {
+            stream.destroy();
+          }
         }
       });
 
       stream.on('error', (streamErr) => {
-        if (!isAborted) {
+        if (!isAborted && !res.writableEnded) {
           logger.warn(`[B2Storage] Stream error for ${key}: ${streamErr.message}`);
           if (!res.headersSent) {
             res.status(500).end();
@@ -231,6 +249,15 @@ export class B2StorageService {
     } catch (err: any) {
       if (err.name === 'NoSuchKey' || err.$metadata?.httpStatusCode === 404) {
         return false;
+      }
+      if (err.name === 'InvalidRange' || err.$metadata?.httpStatusCode === 416) {
+        const meta = await this.getObjectMetadata(key);
+        const total = meta?.size ? meta.size.toString() : '*';
+        res.status(416).set({
+          'Content-Range': `bytes */${total}`,
+          'Accept-Ranges': 'bytes'
+        }).end();
+        return true;
       }
       logger.error(`[B2Storage] Error streaming object ${key}: ${err.message}`);
       return false;

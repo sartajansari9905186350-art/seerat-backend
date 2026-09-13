@@ -27,10 +27,23 @@ export class MobileReelController {
 
       const uploadResult = await videoStorage.uploadVideo(req.file, user.id);
 
+      const files = req.files as { [fieldname: string]: Express.Multer.File[] } | undefined;
+      const thumbFile = files?.['thumbnail']?.[0];
+      let thumbnailUrl: string | undefined = undefined;
+      if (thumbFile) {
+        try {
+          const thumbResult = await videoStorage.uploadThumbnail(thumbFile, user.id);
+          thumbnailUrl = thumbResult.thumbnailUrl;
+        } catch (tErr: any) {
+          logger.warn(`[MobileReelController] Thumbnail upload warning: ${tErr.message}`);
+        }
+      }
+
       ResponseUtil.success(
         res,
         {
           video_url: uploadResult.videoUrl,
+          thumbnail_url: thumbnailUrl,
           filename: uploadResult.filename,
           file_size: uploadResult.fileSize,
           mime_type: uploadResult.mimeType
@@ -244,7 +257,7 @@ export class MobileReelController {
 
       const baseUrl = process.env.BASE_URL || (process.env.NODE_ENV === 'production' ? 'https://seerat-backend.onrender.com' : 'http://localhost:5000');
       const defaultThumb = `${baseUrl}/api/uploads/thumbnails/default.jpg`;
-      const finalThumbnailUrl = (thumbnailUrl && typeof thumbnailUrl === 'string' && !thumbnailUrl.endsWith('.mp4')) ? thumbnailUrl.trim() : defaultThumb;
+      const finalThumbnailUrl = (thumbnailUrl && typeof thumbnailUrl === 'string' && !thumbnailUrl.endsWith('.mp4') && thumbnailUrl !== videoUrl) ? thumbnailUrl.trim() : defaultThumb;
 
       await withTransaction(async (client) => {
         // Media Record
@@ -329,7 +342,7 @@ export class MobileReelController {
         category_id: categoryId,
         category_name: categoryName,
         video_url: videoUrl,
-        thumbnail_url: thumbnailUrl || videoUrl,
+        thumbnail_url: finalThumbnailUrl,
         caption,
         audio_title: audioTitle,
         audio_artist: audioArtist,

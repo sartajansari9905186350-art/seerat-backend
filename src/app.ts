@@ -109,6 +109,19 @@ app.get('/api/uploads/thumbnails/:filename', async (req, res) => {
       }
     }
 
+    // Check persistent database fallback if thumbnail was stored in video_blobs
+    try {
+      const blobRes = await query('SELECT video_data, mime_type FROM video_blobs WHERE filename = $1', [cleanFilename]);
+      if (blobRes.rows.length > 0) {
+        res.set({
+          'Content-Type': blobRes.rows[0].mime_type || 'image/jpeg',
+          'Cache-Control': 'public, max-age=86400, immutable',
+          'Access-Control-Allow-Origin': '*'
+        });
+        return res.send(blobRes.rows[0].video_data);
+      }
+    } catch (_: any) {}
+
     // Fallback: Return branded lightweight Islamic poster image
     const fallbackBuffer = getDefaultThumbnailBuffer();
     res.set({
@@ -129,21 +142,67 @@ app.get('/api/uploads/thumbnails/:filename', async (req, res) => {
   }
 });
 
+// Public HEAD endpoint for video probe requests (ExoPlayer & Browsers)
+app.head('/api/uploads/videos/:filename', async (req, res) => {
+  try {
+    const { filename } = req.params;
+    const cleanFilename = path.basename(filename);
+
+    if (b2Storage.isConfigured()) {
+      const b2Key = `videos/${cleanFilename}`;
+      const meta = await b2Storage.getObjectMetadata(b2Key);
+      if (meta) {
+        res.status(200).set({
+          'Accept-Ranges': 'bytes',
+          'Content-Type': meta.contentType || 'video/mp4',
+          'Content-Length': meta.size.toString(),
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Expose-Headers': 'Content-Range, Accept-Ranges, Content-Length',
+          'Cross-Origin-Resource-Policy': 'cross-origin',
+          'Cache-Control': 'public, max-age=31536000, immutable'
+        }).end();
+        return;
+      }
+    }
+
+    const metaResult = await query(
+      'SELECT file_size, mime_type FROM video_blobs WHERE filename = $1',
+      [cleanFilename]
+    );
+
+    if (metaResult.rows.length) {
+      const totalSize = parseInt(metaResult.rows[0].file_size, 10);
+      const mimeType = metaResult.rows[0].mime_type || 'video/mp4';
+      res.status(200).set({
+        'Accept-Ranges': 'bytes',
+        'Content-Type': mimeType,
+        'Content-Length': totalSize.toString(),
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Expose-Headers': 'Content-Range, Accept-Ranges, Content-Length',
+        'Cross-Origin-Resource-Policy': 'cross-origin',
+        'Cache-Control': 'public, max-age=31536000, immutable'
+      }).end();
+      return;
+    }
+
+    res.status(404).end();
+  } catch (err: any) {
+    res.status(500).end();
+  }
+});
+
 // Public endpoint for video streaming with full HTTP Range (206 Partial Content) support
 app.get('/api/uploads/videos/:filename', async (req, res) => {
   try {
     const { filename } = req.params;
     const cleanFilename = path.basename(filename);
 
-    // 1. Primary: Stream directly from Backblaze B2 if object exists (Zero Supabase database egress)
+    // 1. Primary: Stream directly from Backblaze B2 if object exists (Zero Supabase database egress, zero extra HeadObject latency)
     if (b2Storage.isConfigured()) {
       const b2Key = `videos/${cleanFilename}`;
-      const existsInB2 = await b2Storage.hasObject(b2Key);
-      if (existsInB2) {
-        const streamed = await b2Storage.streamObject(b2Key, req.headers.range, res);
-        if (streamed) {
-          return;
-        }
+      const streamed = await b2Storage.streamObject(b2Key, req.headers.range, res);
+      if (streamed) {
+        return;
       }
     }
 
