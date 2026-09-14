@@ -281,8 +281,13 @@ export class MobileAuthController {
 
   async verifyResetToken(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-      const token = (req.query.token as string) || req.params.token;
-      if (!token) {
+      const rawToken = (req.query.token as string) || (req.params as any)?.token || (req.body?.token as string) || '';
+      const token = (typeof rawToken === 'string' ? rawToken : '').trim();
+      
+      const hasToken = token.length > 0;
+      logger.info(`[PASSWORD_RESET_VERIFY] Request received | TOKEN_PRESENT=${hasToken} | TOKEN_LENGTH=${token.length}`);
+
+      if (!hasToken) {
         ResponseUtil.error(res, 'VALIDATION_ERROR', 'Reset token is required.', 400);
         return;
       }
@@ -296,6 +301,7 @@ export class MobileAuthController {
       );
 
       if (tokenRes.rows.length === 0) {
+        logger.warn(`[PASSWORD_RESET_VERIFY] Token not found in database | TOKEN_VALID=false`);
         ResponseUtil.error(res, 'INVALID_TOKEN', 'This password reset link is invalid or does not exist.', 400);
         return;
       }
@@ -303,15 +309,18 @@ export class MobileAuthController {
       const record = tokenRes.rows[0];
 
       if (record.used_at !== null) {
+        logger.warn(`[PASSWORD_RESET_VERIFY] Token already used | TOKEN_VALID=false`);
         ResponseUtil.error(res, 'TOKEN_ALREADY_USED', 'This password reset link has already been used. Please request a new one.', 400);
         return;
       }
 
       if (new Date(record.expires_at).getTime() < Date.now()) {
+        logger.warn(`[PASSWORD_RESET_VERIFY] Token expired | TOKEN_VALID=false`);
         ResponseUtil.error(res, 'TOKEN_EXPIRED', 'This password reset link has expired. Please request a new one.', 400);
         return;
       }
 
+      logger.info(`[PASSWORD_RESET_VERIFY] Token validated successfully | TOKEN_VALID=true`);
       ResponseUtil.success(res, {
         valid: true,
         username: record.username,
@@ -324,14 +333,20 @@ export class MobileAuthController {
 
   async resetPassword(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-      const { token, newPassword } = req.body;
+      const rawToken = req.body?.token || (req.query?.token as string) || '';
+      const token = (typeof rawToken === 'string' ? rawToken : '').trim();
+      const newPassword = (typeof req.body?.newPassword === 'string' ? req.body.newPassword : '').trim();
 
-      if (!token || typeof token !== 'string') {
+      const hasToken = token.length > 0;
+      logger.info(`[PASSWORD_RESET_SUBMIT] Reset submission received | TOKEN_PRESENT=${hasToken} | TOKEN_LENGTH=${token.length}`);
+
+      if (!hasToken) {
+        logger.warn(`[PASSWORD_RESET_SUBMIT] Missing token | TOKEN_VALID=false`);
         ResponseUtil.error(res, 'VALIDATION_ERROR', 'Reset token is required.', 400);
         return;
       }
 
-      if (!newPassword || typeof newPassword !== 'string' || newPassword.length < 6) {
+      if (!newPassword || newPassword.length < 6) {
         ResponseUtil.error(res, 'VALIDATION_ERROR', 'Password must be at least 6 characters long.', 400);
         return;
       }
@@ -346,6 +361,7 @@ export class MobileAuthController {
       );
 
       if (tokenRes.rows.length === 0) {
+        logger.warn(`[PASSWORD_RESET_SUBMIT] Token lookup failed | TOKEN_VALID=false`);
         ResponseUtil.error(res, 'INVALID_TOKEN', 'This password reset link is invalid or does not exist.', 400);
         return;
       }
@@ -353,14 +369,18 @@ export class MobileAuthController {
       const record = tokenRes.rows[0];
 
       if (record.used_at !== null) {
+        logger.warn(`[PASSWORD_RESET_SUBMIT] Token already used | TOKEN_VALID=false`);
         ResponseUtil.error(res, 'TOKEN_ALREADY_USED', 'This password reset link has already been used.', 400);
         return;
       }
 
       if (new Date(record.expires_at).getTime() < Date.now()) {
+        logger.warn(`[PASSWORD_RESET_SUBMIT] Token expired | TOKEN_VALID=false`);
         ResponseUtil.error(res, 'TOKEN_EXPIRED', 'This password reset link has expired.', 400);
         return;
       }
+
+      logger.info(`[PASSWORD_RESET_SUBMIT] Token valid, updating password | TOKEN_VALID=true`);
 
       // Hash new password using bcrypt
       const saltRounds = 12;
@@ -386,7 +406,7 @@ export class MobileAuthController {
         );
       });
 
-      logger.info(`Password successfully reset for user ${record.username}`);
+      logger.info(`[PASSWORD_RESET_SUBMIT] Password successfully reset for user ${record.username}`);
       ResponseUtil.success(res, true, 'Your password has been reset successfully. You can now sign in with your new password.');
     } catch (err) {
       next(err);

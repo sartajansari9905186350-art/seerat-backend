@@ -78,9 +78,9 @@ class EmailService {
         <a href="${resetUrl}" class="btn" target="_blank">Reset Password</a>
       </div>
       <p class="message" style="font-size: 13px; color: #6b7280;">
-        If the button above does not work, copy and paste this link into your web browser:
+        If the button above does not work, click or copy this link into your web browser:
       </p>
-      <div class="link-alt">${resetUrl}</div>
+      <div class="link-alt"><a href="${resetUrl}" style="color: #047857; text-decoration: underline; word-break: break-all;" target="_blank">${resetUrl}</a></div>
       <div class="security-note">
         <strong>Important:</strong> This password reset link is valid for <strong>1 hour</strong> and can only be used once. If you did not request this password reset, you can safely ignore this email; your account remains secure.
       </div>
