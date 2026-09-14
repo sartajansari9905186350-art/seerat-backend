@@ -4,11 +4,13 @@ import { reviewController } from '../controllers/review.controller';
 import { authenticateAdmin } from '../middleware/auth.middleware';
 import { validateBody } from '../middleware/validate';
 import { approveContentSchema, rejectContentSchema, removeContentSchema } from '../validators/content.validator';
+import { handlePhotoUpload } from '../middleware/upload.middleware';
 
 const router = Router();
 router.use(authenticateAdmin);
 
 router.get('/', contentController.getAll);
+router.post('/update-thumbnail', handlePhotoUpload, contentController.updateThumbnail);
 router.get('/:id', contentController.getById);
 router.post('/:id/approve', validateBody(approveContentSchema), reviewController.approve);
 router.post('/:id/reject', validateBody(rejectContentSchema), reviewController.reject);

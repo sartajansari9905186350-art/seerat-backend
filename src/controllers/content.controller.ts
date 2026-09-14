@@ -4,6 +4,8 @@ import { moderationService } from '../services/moderation.service';
 import { ResponseUtil } from '../utils/response';
 import { AuthenticatedRequest } from '../middleware/auth.middleware';
 import { ContentType } from '../models/content.model';
+import { videoStorage } from '../services/videoStorage.service';
+import { query } from '../config/database';
 
 export class ContentController {
   async getAll(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
@@ -84,6 +86,58 @@ export class ContentController {
       await moderationService.restoreContent(id, contentType, admin, ipAddress, userAgent);
 
       ResponseUtil.success(res, { id, status: 'APPROVED' }, `${contentType} #${id.slice(0, 8)} restored to Approved status.`);
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  async updateThumbnail(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const file = req.file;
+      if (!file) {
+        ResponseUtil.error(res, 'BAD_REQUEST', 'Thumbnail image file is required.', 400);
+        return;
+      }
+      const { reelId, postId, videoUrl, mediaId } = req.body;
+      if (!reelId && !postId && !videoUrl && !mediaId) {
+        ResponseUtil.error(res, 'BAD_REQUEST', 'One of reelId, postId, videoUrl, or mediaId must be specified.', 400);
+        return;
+      }
+
+      const uploaded = await videoStorage.uploadThumbnail(file, 'admin');
+
+      let updatedCount = 0;
+      if (mediaId) {
+        const resDb = await query(`UPDATE media SET thumbnail_url = $1 WHERE id = $2`, [uploaded.thumbnailUrl, mediaId]);
+        updatedCount += resDb.rowCount || 0;
+      }
+      if (reelId) {
+        const resDb = await query(
+          `UPDATE media SET thumbnail_url = $1 WHERE id = (SELECT media_id FROM reels WHERE id = $2)`,
+          [uploaded.thumbnailUrl, reelId]
+        );
+        updatedCount += resDb.rowCount || 0;
+      }
+      if (postId) {
+        const resDb = await query(
+          `UPDATE media SET thumbnail_url = $1 WHERE id = (SELECT media_id FROM posts WHERE id = $2)`,
+          [uploaded.thumbnailUrl, postId]
+        );
+        updatedCount += resDb.rowCount || 0;
+      }
+      if (videoUrl) {
+        const resDb = await query(
+          `UPDATE media SET thumbnail_url = $1 WHERE url = $2`,
+          [uploaded.thumbnailUrl, videoUrl]
+        );
+        updatedCount += resDb.rowCount || 0;
+      }
+
+      ResponseUtil.success(res, {
+        thumbnailUrl: uploaded.thumbnailUrl,
+        filename: uploaded.filename,
+        updatedCount
+      }, 'Thumbnail updated successfully.');
     } catch (err) {
       next(err);
     }

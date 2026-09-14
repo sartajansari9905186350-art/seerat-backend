@@ -36,14 +36,15 @@ export const uploadProfilePhotoMulter = multer({
   { name: 'photo', maxCount: 1 },
   { name: 'avatar', maxCount: 1 },
   { name: 'image', maxCount: 1 },
-  { name: 'file', maxCount: 1 }
+  { name: 'file', maxCount: 1 },
+  { name: 'thumbnail', maxCount: 1 }
 ]);
 
 export const handlePhotoUpload = (req: Request, res: Response, next: NextFunction) => {
   uploadProfilePhotoMulter(req, res, (err: any) => {
     if (err) {
       if (err.code === 'LIMIT_FILE_SIZE') {
-        return ResponseUtil.error(res, 'FILE_TOO_LARGE', 'Profile photo exceeds maximum allowed size of 5 MB.', 400);
+        return ResponseUtil.error(res, 'FILE_TOO_LARGE', 'Photo exceeds maximum allowed size of 5 MB.', 400);
       }
       if (err.message === 'INVALID_FILE_TYPE') {
         return ResponseUtil.error(res, 'INVALID_FILE_TYPE', 'Unsupported file type. Please upload a JPG, JPEG, PNG, or WEBP image.', 400);
@@ -54,7 +55,7 @@ export const handlePhotoUpload = (req: Request, res: Response, next: NextFunctio
     // Normalize req.file from any of the allowed multipart field names
     const files = req.files as { [fieldname: string]: Express.Multer.File[] } | undefined;
     if (files) {
-      req.file = files['photo']?.[0] || files['avatar']?.[0] || files['image']?.[0] || files['file']?.[0];
+      req.file = files['photo']?.[0] || files['avatar']?.[0] || files['image']?.[0] || files['file']?.[0] || files['thumbnail']?.[0];
     }
 
     next();
