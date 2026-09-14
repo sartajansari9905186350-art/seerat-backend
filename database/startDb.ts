@@ -2,20 +2,23 @@ import path from 'path';
 import fs from 'fs';
 import { logger } from '../src/utils/logger';
 
-const EmbeddedPostgres = require('embedded-postgres').default || require('embedded-postgres');
-
-
 const dataDir = path.resolve(__dirname, '../.data/postgres');
 
 export const getPgInstance = () => {
-  return new (EmbeddedPostgres as any)({
-    port: 5432,
-    databaseDir: dataDir,
-    user: 'postgres',
-    password: 'postgres',
-    database: 'postgres',
-    persistent: true
-  });
+  try {
+    const EmbeddedPostgres = require('embedded-postgres').default || require('embedded-postgres');
+    return new (EmbeddedPostgres as any)({
+      port: 5432,
+      databaseDir: dataDir,
+      user: 'postgres',
+      password: 'postgres',
+      database: 'postgres',
+      persistent: true
+    });
+  } catch (err: any) {
+    logger.warn('embedded-postgres could not be loaded (production environment): ' + err.message);
+    return null;
+  }
 };
 
 export const isPostgresRunning = async (): Promise<boolean> => {
@@ -32,11 +35,21 @@ export const isPostgresRunning = async (): Promise<boolean> => {
 };
 
 export const ensurePostgresRunning = async (): Promise<void> => {
+  const dbUrl = process.env.DATABASE_URL || '';
+  if (dbUrl && !dbUrl.includes('localhost') && !dbUrl.includes('127.0.0.1')) {
+    logger.info('[PostgreSQL Engine] Cloud PostgreSQL database configured. Skipping local embedded-postgres check.');
+    return;
+  }
+
   const alreadyRunning = await isPostgresRunning();
   if (alreadyRunning) {
     logger.info('[PostgreSQL Engine] Native PostgreSQL server is already active and accepting connections on port 5432.');
   } else {
     const pg = getPgInstance();
+    if (!pg) {
+      logger.info('[PostgreSQL Engine] Embedded postgres not available; relying on external/configured database.');
+      return;
+    }
     if (!fs.existsSync(dataDir)) {
       logger.info(`[PostgreSQL Engine] Initializing persistent database cluster at ${dataDir}...`);
       await pg.initialise();

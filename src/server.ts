@@ -290,8 +290,14 @@ const checkAndInitSchema = async (): Promise<void> => {
 
 const startServer = async (): Promise<void> => {
   try {
-    // Ensure PostgreSQL is running
-    await ensurePostgresRunning();
+    // Ensure PostgreSQL is running locally if on localhost
+    if (!env.databaseUrl || env.databaseUrl.includes('localhost') || env.databaseUrl.includes('127.0.0.1')) {
+      try {
+        await ensurePostgresRunning();
+      } catch (err: any) {
+        logger.warn('Local postgres start notice:', err.message);
+      }
+    }
 
     // Verify PostgreSQL connectivity
     await testConnection();
