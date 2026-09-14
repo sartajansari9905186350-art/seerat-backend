@@ -1096,16 +1096,35 @@ app.get(['/r/:reelId', '/api/reels/:reelId/share'], async (req, res) => {
 });
 
 // Web-based Password Reset Page (served to users who click the email reset link)
-app.get('/reset-password', async (req, res) => {
+app.get(['/reset-password', '/reset-password/:token'], async (req, res) => {
   try {
-    const rawToken = (req.query.token as string) || '';
-    const cleanToken = rawToken.replace(/[^a-zA-Z0-9]/g, '');
+    let extracted = '';
+    if (typeof req.query.token === 'string') {
+      extracted = req.query.token;
+    } else if (Array.isArray(req.query.token) && typeof req.query.token[0] === 'string') {
+      extracted = req.query.token[0];
+    } else if (typeof (req.params as any)?.token === 'string') {
+      extracted = (req.params as any).token;
+    } else if (typeof req.query.t === 'string') {
+      extracted = req.query.t;
+    } else if (typeof req.query.reset_token === 'string') {
+      extracted = req.query.reset_token;
+    }
 
-    // Check if token exists and is valid
+    let decodedToken = extracted;
+    try {
+      decodedToken = decodeURIComponent(extracted);
+    } catch {}
+    const cleanToken = (decodedToken || '').trim().replace(/[^a-zA-Z0-9]/g, '');
+
+    const hasToken = cleanToken.length > 0;
+    logger.info(`[PASSWORD_RESET_PAGE] GET /reset-password requested | TOKEN_PRESENT=${hasToken} | TOKEN_LENGTH=${cleanToken.length}`);
+
+    // Check if token exists and is valid on server
     let initialError = '';
     let targetUsername = '';
 
-    if (!cleanToken) {
+    if (!hasToken) {
       initialError = 'Invalid or missing password reset token. Please request a new link from the SEERAT app.';
     } else {
       const tokenRes = await query(
@@ -1304,43 +1323,43 @@ app.get('/reset-password', async (req, res) => {
 
     <div id="errorAlert" class="alert-error" style="${initialError ? 'display: block;' : 'display: none;'}">${initialError}</div>
 
-    ${initialError ? `
-      <div style="text-align: center; margin-top: 16px;">
-        <a href="seerat://login" class="btn-open-app">Open SEERAT App</a>
+    <div id="resetFormContainer" style="${initialError ? 'display: none;' : 'display: block;'}">
+      <div id="targetUserContainer" style="${targetUsername ? 'display: block;' : 'display: none;'} font-size: 13px; color: #9ca3af; margin-bottom: 16px; text-align: center;">
+        Resetting password for: <strong id="targetUserLabel" style="color: #34d399;">@${targetUsername}</strong>
       </div>
-    ` : `
-      <div id="resetFormContainer">
-        ${targetUsername ? `<div style="font-size: 13px; color: #9ca3af; margin-bottom: 16px; text-align: center;">Resetting password for: <strong style="color: #34d399;">@${targetUsername}</strong></div>` : ''}
-        <form id="resetForm" onsubmit="handleReset(event)">
-          <input type="hidden" id="tokenInput" value="${cleanToken}">
-          
-          <div class="form-group">
-            <label class="form-label" for="newPassword">New Password (min 6 characters)</label>
-            <div class="input-wrapper">
-              <input type="password" id="newPassword" class="form-input" required minlength="6" placeholder="Enter new password" autocomplete="new-password">
-              <button type="button" class="toggle-pwd" onclick="toggleVisibility('newPassword', this)">Show</button>
-            </div>
+      <form id="resetForm" onsubmit="handleReset(event)">
+        <input type="hidden" id="tokenInput" value="${cleanToken}">
+        
+        <div class="form-group">
+          <label class="form-label" for="newPassword">New Password (min 6 characters)</label>
+          <div class="input-wrapper">
+            <input type="password" id="newPassword" class="form-input" required minlength="6" placeholder="Enter new password" autocomplete="new-password">
+            <button type="button" class="toggle-pwd" onclick="toggleVisibility('newPassword', this)">Show</button>
           </div>
+        </div>
 
-          <div class="form-group">
-            <label class="form-label" for="confirmPassword">Confirm New Password</label>
-            <div class="input-wrapper">
-              <input type="password" id="confirmPassword" class="form-input" required minlength="6" placeholder="Re-enter new password" autocomplete="new-password">
-              <button type="button" class="toggle-pwd" onclick="toggleVisibility('confirmPassword', this)">Show</button>
-            </div>
+        <div class="form-group">
+          <label class="form-label" for="confirmPassword">Confirm New Password</label>
+          <div class="input-wrapper">
+            <input type="password" id="confirmPassword" class="form-input" required minlength="6" placeholder="Re-enter new password" autocomplete="new-password">
+            <button type="button" class="toggle-pwd" onclick="toggleVisibility('confirmPassword', this)">Show</button>
           </div>
+        </div>
 
-          <button type="submit" id="submitBtn" class="btn-submit">Update Password</button>
-        </form>
-      </div>
+        <button type="submit" id="submitBtn" class="btn-submit">Update Password</button>
+      </form>
+    </div>
 
-      <div id="successContainer" class="success-box" style="display: none;">
-        <div class="success-icon">&#10003;</div>
-        <div class="success-title">Password Reset Complete!</div>
-        <div class="success-desc">Your password has been successfully updated. You can now log into the SEERAT mobile app with your new password.</div>
-        <a href="seerat://login" class="btn-open-app">Open SEERAT App</a>
-      </div>
-    `}
+    <div id="openAppContainer" style="${initialError ? 'display: block;' : 'display: none;'} text-align: center; margin-top: 16px;">
+      <a href="seerat://login" class="btn-open-app">Open SEERAT App</a>
+    </div>
+
+    <div id="successContainer" class="success-box" style="display: none;">
+      <div class="success-icon">&#10003;</div>
+      <div class="success-title">Password Reset Complete!</div>
+      <div class="success-desc">Your password has been successfully updated. You can now log into the SEERAT mobile app with your new password.</div>
+      <a href="seerat://login" class="btn-open-app">Open SEERAT App</a>
+    </div>
 
     <div class="footer-note">SEERAT &bull; Authentic Islamic Social &amp; Video Platform</div>
   </div>
@@ -1357,15 +1376,76 @@ app.get('/reset-password', async (req, res) => {
       }
     }
 
+    // Client-side fallback check in case token was in URL hash or stripped during initial SSR
+    (function initClientToken() {
+      var tokenInput = document.getElementById('tokenInput');
+      var serverToken = tokenInput ? (tokenInput.value || '').trim() : '';
+      var hasServerError = ${Boolean(initialError)};
+
+      if (serverToken && !hasServerError) {
+        return; // Server already validated token successfully
+      }
+
+      var searchParams = new URLSearchParams(window.location.search);
+      var hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ''));
+      var clientToken = searchParams.get('token') || searchParams.get('t') || searchParams.get('reset_token') ||
+                        hashParams.get('token') || hashParams.get('t') || hashParams.get('reset_token');
+
+      if (clientToken) {
+        clientToken = clientToken.replace(/[^a-zA-Z0-9]/g, '');
+      }
+
+      if (clientToken && clientToken.length >= 32) {
+        fetch('/api/auth/verify-reset-token?token=' + encodeURIComponent(clientToken))
+          .then(function(r) { return r.json(); })
+          .then(function(resData) {
+            if (resData && resData.success && resData.data && resData.data.valid) {
+              tokenInput.value = clientToken;
+              document.getElementById('errorAlert').style.display = 'none';
+              document.getElementById('openAppContainer').style.display = 'none';
+              document.getElementById('resetFormContainer').style.display = 'block';
+              if (resData.data.username) {
+                document.getElementById('targetUserLabel').textContent = '@' + resData.data.username;
+                document.getElementById('targetUserContainer').style.display = 'block';
+              }
+            } else {
+              var msg = (resData && resData.error && resData.error.message) || (resData && resData.message) || 'This password reset link is invalid or has expired.';
+              document.getElementById('errorAlert').textContent = msg;
+              document.getElementById('errorAlert').style.display = 'block';
+              document.getElementById('openAppContainer').style.display = 'block';
+              document.getElementById('resetFormContainer').style.display = 'none';
+            }
+          })
+          .catch(function() {
+            // Keep default server error on network failure
+          });
+      }
+    })();
+
     async function handleReset(e) {
       e.preventDefault();
-      var token = document.getElementById('tokenInput').value;
-      var newPassword = document.getElementById('newPassword').value;
-      var confirmPassword = document.getElementById('confirmPassword').value;
+      var tokenInput = document.getElementById('tokenInput');
+      var token = tokenInput ? tokenInput.value.trim() : '';
+
+      // Fallback to URL search or hash param if input was somehow empty
+      if (!token) {
+        var sp = new URLSearchParams(window.location.search);
+        var hp = new URLSearchParams(window.location.hash.replace(/^#/, ''));
+        token = (sp.get('token') || sp.get('t') || hp.get('token') || hp.get('t') || '').replace(/[^a-zA-Z0-9]/g, '');
+      }
+
+      var newPassword = document.getElementById('newPassword').value.trim();
+      var confirmPassword = document.getElementById('confirmPassword').value.trim();
       var errorAlert = document.getElementById('errorAlert');
       var submitBtn = document.getElementById('submitBtn');
 
       errorAlert.style.display = 'none';
+
+      if (!token) {
+        errorAlert.textContent = 'Missing password reset token. Please request a new link from the SEERAT app.';
+        errorAlert.style.display = 'block';
+        return;
+      }
 
       if (newPassword !== confirmPassword) {
         errorAlert.textContent = 'Passwords do not match. Please verify both fields.';
@@ -1392,9 +1472,10 @@ app.get('/reset-password', async (req, res) => {
 
         if (resp.ok && data.success) {
           document.getElementById('resetFormContainer').style.display = 'none';
+          document.getElementById('openAppContainer').style.display = 'none';
           document.getElementById('successContainer').style.display = 'block';
         } else {
-          errorAlert.textContent = data.message || (data.error && data.error.message) || 'Failed to reset password. Please try again.';
+          errorAlert.textContent = (data.error && data.error.message) || data.message || 'Failed to reset password. Please try again.';
           errorAlert.style.display = 'block';
           submitBtn.disabled = false;
           submitBtn.textContent = 'Update Password';
