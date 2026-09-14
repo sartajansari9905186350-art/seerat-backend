@@ -5,6 +5,7 @@
   "main": "dist/src/server.js",
   "scripts": {
     "build": "tsc -p tsconfig.json",
+    "postbuild": "node -e \"const fs = require('fs'), path = require('path'); fs.mkdirSync(path.join('dist', 'src', 'assets'), { recursive: true }); fs.copyFileSync(path.join('src', 'assets', 'logo.png'), path.join('dist', 'src', 'assets', 'logo.png'));\"",
     "start": "node dist/src/server.js",
     "dev": "ts-node src/server.ts",
     "migrate": "node dist/database/migrate.js",

@@ -1,5 +1,6 @@
 import express, { Express } from 'express';
 import path from 'path';
+import fs from 'fs';
 import cors from 'cors';
 import helmet from 'helmet';
 import morgan from 'morgan';
@@ -78,6 +79,33 @@ app.get('/api/uploads/profile-photos/:filename', async (req, res) => {
   } catch (err: any) {
     res.status(500).json({ success: false, message: 'Error retrieving photo' });
   }
+});
+
+// Public endpoint to serve the official SEERAT brand logo (used for OpenGraph fallback and branding)
+app.get(['/assets/logo.png', '/api/assets/logo.png', '/logo.png'], (_req, res) => {
+  const possiblePaths = [
+    path.join(__dirname, 'assets', 'logo.png'),
+    path.join(__dirname, '../src/assets', 'logo.png'),
+    path.join(process.cwd(), 'src/assets/logo.png'),
+    path.join(process.cwd(), 'dist/src/assets/logo.png')
+  ];
+  for (const p of possiblePaths) {
+    if (fs.existsSync(p)) {
+      res.set({
+        'Content-Type': 'image/png',
+        'Cache-Control': 'public, max-age=86400, immutable',
+        'Access-Control-Allow-Origin': '*'
+      });
+      return res.sendFile(p);
+    }
+  }
+  const defaultThumb = getDefaultThumbnailBuffer();
+  res.set({
+    'Content-Type': 'image/png',
+    'Cache-Control': 'public, max-age=86400, immutable',
+    'Access-Control-Allow-Origin': '*'
+  });
+  return res.send(defaultThumb);
 });
 
 // Public endpoint to serve lightweight thumbnail images (prevents Coil from downloading full MP4s)
@@ -562,6 +590,35 @@ app.get('/reset-password', async (req, res) => {
 </html>`);
 });
 
+// Helper to safely escape HTML entities and prevent XSS
+function escapeHtml(str: any): string {
+  if (str === null || str === undefined) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+// Helper to resolve public photo URL without exposing private B2/internal credentials
+function resolvePublicPhotoUrl(rawPhoto: string | null | undefined): string {
+  const fallbackLogo = 'https://seerat-backend.onrender.com/assets/logo.png';
+  if (!rawPhoto || typeof rawPhoto !== 'string') return fallbackLogo;
+  const trimmed = rawPhoto.trim();
+  if (!trimmed) return fallbackLogo;
+  if (trimmed.includes('backblazeb2.com') || trimmed.includes('b2_') || trimmed.includes('seerat-media')) {
+    return fallbackLogo;
+  }
+  if (trimmed.startsWith('https://') || trimmed.startsWith('http://')) {
+    return trimmed;
+  }
+  if (trimmed.startsWith('/')) {
+    return `https://seerat-backend.onrender.com${trimmed}`;
+  }
+  return fallbackLogo;
+}
+
 // ==========================================
 // PUBLIC WEB: SEERAT PROFILE LINK WITH OPENGRAPH
 // ==========================================
@@ -571,7 +628,10 @@ app.get('/u/:username', async (req, res) => {
     const cleanUsername = (username || '').toLowerCase().trim();
 
     const result = await query(
-      `SELECT u.id, u.name, u.username, p.bio, p.profile_photo, p.followers_count, p.posts_count, p.reels_count
+      `SELECT u.id, u.name, u.username, p.bio, p.profile_photo,
+              COALESCE(p.followers_count, 0) as followers_count,
+              COALESCE(p.posts_count, 0) as posts_count,
+              COALESCE(p.reels_count, 0) as reels_count
        FROM users u
        LEFT JOIN profiles p ON u.id = p.user_id
        WHERE LOWER(u.username) = $1`,
@@ -579,39 +639,99 @@ app.get('/u/:username', async (req, res) => {
     );
 
     if (result.rows.length === 0) {
+      const safeUser = escapeHtml(cleanUsername);
       return res.status(404).send(`<!DOCTYPE html>
-<html><head><title>User Not Found - SEERAT</title></head>
-<body style="font-family:sans-serif; text-align:center; padding:50px;">
-  <h2>User Not Found</h2>
-  <p>The profile @\${cleanUsername} does not exist on SEERAT.</p>
-</body></html>`);
-    }
-
-    const u = result.rows[0];
-    const displayName = u.name || cleanUsername;
-    const bioText = u.bio || 'Follow on SEERAT - Authentic Islamic Platform for Quran, Hadith, Bayan & Islamic Reminders.';
-    const photo = u.profile_photo || 'https://seerat-backend.onrender.com/api/uploads/thumbnails/default.jpg';
-    const profileUrl = `https://seerat-backend.onrender.com/u/\${u.username}`;
-    const deepLink = `seerat://user/\${u.id}`;
-
-    res.send(`<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>\${displayName} (@\${u.username}) &bull; SEERAT</title>
-  
+  <title>User Not Found – SEERAT</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+      background: #f8fafc;
+      color: #0f172a;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+      text-align: center;
+    }
+    .card {
+      background: #ffffff;
+      border-radius: 20px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.06);
+      padding: 40px 28px;
+      max-width: 380px;
+      width: 100%;
+      border: 1px solid #e2e8f0;
+    }
+    h1 { font-size: 20px; color: #dc2626; margin-bottom: 8px; font-weight: 700; }
+    p { color: #64748b; font-size: 14px; margin-bottom: 24px; line-height: 1.5; }
+    .btn { display: inline-block; padding: 12px 24px; background: #047857; color: #fff; text-decoration: none; border-radius: 10px; font-weight: 600; font-size: 14px; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>Profile Not Found</h1>
+    <p>The profile @${safeUser} does not exist on SEERAT.</p>
+    <a href="https://seerat-backend.onrender.com" class="btn">Return to SEERAT</a>
+  </div>
+</body>
+</html>`);
+    }
+
+    const u = result.rows[0];
+    const rawDisplayName = (u.name && u.name.trim()) ? u.name.trim() : (u.username || cleanUsername);
+    const rawUsername = u.username || cleanUsername;
+    const rawBio = (u.bio && u.bio.trim()) ? u.bio.trim() : 'Seeker of beneficial Islamic knowledge & authentic reminders on SEERAT.';
+    const publicPhotoUrl = resolvePublicPhotoUrl(u.profile_photo);
+    const hasCustomPhoto = Boolean(u.profile_photo && publicPhotoUrl !== 'https://seerat-backend.onrender.com/assets/logo.png');
+
+    const followersCount = Number(u.followers_count || 0);
+    const postsCount = Number(u.posts_count || 0);
+    const deepLink = `seerat://user/${encodeURIComponent(u.id)}`;
+    const publicProfileUrl = `https://seerat-backend.onrender.com/u/${encodeURIComponent(rawUsername)}`;
+
+    // Escaped variables for safe HTML injection
+    const escDisplayName = escapeHtml(rawDisplayName);
+    const escUsername = escapeHtml(rawUsername);
+    const escBio = escapeHtml(rawBio);
+    const escPhotoUrl = escapeHtml(publicPhotoUrl);
+    const escProfileUrl = escapeHtml(publicProfileUrl);
+    const escDeepLink = escapeHtml(deepLink);
+
+    const ogTitle = `${escDisplayName} (@${escUsername}) – SEERAT`;
+    const ogDescription = escBio;
+    const ogImage = escPhotoUrl;
+    const ogUrl = escProfileUrl;
+
+    const avatarHtml = hasCustomPhoto
+      ? `<img src="${escPhotoUrl}" class="avatar" alt="${escDisplayName}" onerror="this.onerror=null;this.src='https://seerat-backend.onrender.com/assets/logo.png';">`
+      : `<div class="avatar-placeholder">${escDisplayName.charAt(0).toUpperCase()}</div>`;
+
+    let html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${ogTitle}</title>
+
   <!-- OpenGraph Meta Tags for Rich Social Previews (WhatsApp, Telegram, Facebook, Twitter) -->
-  <meta property="og:type" content="profile">
-  <meta property="og:title" content="\${displayName} (@\${u.username}) on SEERAT">
-  <meta property="og:description" content="\${bioText}">
-  <meta property="og:image" content="\${photo}">
-  <meta property="og:url" content="\${profileUrl}">
   <meta property="og:site_name" content="SEERAT">
+  <meta property="og:type" content="profile">
+  <meta property="og:title" content="${ogTitle}">
+  <meta property="og:description" content="${ogDescription}">
+  <meta property="og:image" content="${ogImage}">
+  <meta property="og:url" content="${ogUrl}">
+
+  <!-- Twitter / X Card Meta Tags -->
   <meta name="twitter:card" content="summary">
-  <meta name="twitter:title" content="\${displayName} (@\${u.username})">
-  <meta name="twitter:description" content="\${bioText}">
-  <meta name="twitter:image" content="\${photo}">
+  <meta name="twitter:title" content="${ogTitle}">
+  <meta name="twitter:description" content="${ogDescription}">
+  <meta name="twitter:image" content="${ogImage}">
 
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -627,105 +747,148 @@ app.get('/u/:username', async (req, res) => {
       flex-direction: column;
       align-items: center;
       justify-content: center;
-      padding: 20px;
+      padding: 24px 16px;
     }
     .card {
       background: #ffffff;
       width: 100%;
-      max-width: 420px;
+      max-width: 400px;
       border-radius: 24px;
       box-shadow: 0 10px 30px rgba(0, 0, 0, 0.05);
       border: 1px solid #e2e8f0;
-      padding: 36px 28px;
+      padding: 36px 24px;
       text-align: center;
     }
     .avatar {
-      width: 100px;
-      height: 100px;
+      width: 96px;
+      height: 96px;
       border-radius: 50%;
       object-fit: cover;
       margin: 0 auto 16px;
       border: 3px solid #047857;
-      box-shadow: 0 4px 12px rgba(4, 120, 87, 0.2);
+      box-shadow: 0 4px 14px rgba(4, 120, 87, 0.18);
+      display: block;
     }
     .avatar-placeholder {
-      width: 100px;
-      height: 100px;
+      width: 96px;
+      height: 96px;
       border-radius: 50%;
       background: #047857;
-      color: #fff;
+      color: #ffffff;
       font-size: 36px;
       font-weight: 700;
       display: flex;
       align-items: center;
       justify-content: center;
       margin: 0 auto 16px;
+      box-shadow: 0 4px 14px rgba(4, 120, 87, 0.18);
     }
-    h1 { font-size: 20px; font-weight: 800; color: #0f172a; margin-bottom: 2px; }
-    .username { font-size: 14px; font-weight: 600; color: #047857; margin-bottom: 12px; }
-    .bio { font-size: 13.5px; color: #475569; line-height: 1.5; margin-bottom: 20px; word-wrap: break-word; }
+    h1 {
+      font-size: 22px;
+      font-weight: 800;
+      color: #0f172a;
+      margin-bottom: 3px;
+      letter-spacing: -0.3px;
+    }
+    .username {
+      font-size: 14px;
+      font-weight: 600;
+      color: #047857;
+      margin-bottom: 14px;
+    }
+    .bio {
+      font-size: 14px;
+      color: #475569;
+      line-height: 1.55;
+      margin-bottom: 22px;
+      word-wrap: break-word;
+    }
     .stats {
       display: flex;
       justify-content: space-around;
       background: #f8fafc;
-      border-radius: 12px;
-      padding: 12px;
+      border: 1px solid #edf2f7;
+      border-radius: 14px;
+      padding: 14px 10px;
       margin-bottom: 24px;
     }
-    .stat-num { font-size: 16px; font-weight: 800; color: #0f172a; }
-    .stat-label { font-size: 11px; font-weight: 600; color: #64748b; text-transform: uppercase; }
+    .stat-item {
+      flex: 1;
+      text-align: center;
+    }
+    .stat-num {
+      font-size: 17px;
+      font-weight: 800;
+      color: #0f172a;
+    }
+    .stat-label {
+      font-size: 11px;
+      font-weight: 600;
+      color: #64748b;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-top: 2px;
+    }
     .btn {
       display: block;
       width: 100%;
-      padding: 14px;
+      padding: 14px 20px;
       background: #047857;
       color: #ffffff !important;
       text-decoration: none;
-      border-radius: 12px;
+      border-radius: 14px;
       font-size: 15px;
       font-weight: 700;
-      transition: background 0.2s;
+      box-shadow: 0 4px 12px rgba(4, 120, 87, 0.25);
+      transition: background 0.2s, transform 0.1s;
     }
-    .btn:hover { background: #065f46; }
-    .footer-note { margin-top: 20px; font-size: 12px; color: #94a3b8; }
+    .btn:hover {
+      background: #065f46;
+    }
+    .footer-note {
+      margin-top: 22px;
+      font-size: 12px;
+      font-weight: 600;
+      color: #94a3b8;
+      letter-spacing: 0.3px;
+    }
   </style>
 </head>
 <body>
   <div class="card">
-    \${u.profile_photo ? '<img src="' + photo + '" class="avatar" alt="' + displayName + '">' : '<div class="avatar-placeholder">' + displayName.charAt(0).toUpperCase() + '</div>'}
-    <h1>\${displayName}</h1>
-    <div class="username">@\${u.username}</div>
-    <div class="bio">\${bioText}</div>
+    ${avatarHtml}
+    <h1>${escDisplayName}</h1>
+    <div class="username">@${escUsername}</div>
+    <div class="bio">${escBio}</div>
 
     <div class="stats">
-      <div>
-        <div class="stat-num">\${u.followers_count || 0}</div>
+      <div class="stat-item">
+        <div class="stat-num">${followersCount.toLocaleString()}</div>
         <div class="stat-label">Followers</div>
       </div>
-      <div>
-        <div class="stat-num">\${u.posts_count || 0}</div>
+      <div class="stat-item">
+        <div class="stat-num">${postsCount.toLocaleString()}</div>
         <div class="stat-label">Posts</div>
-      </div>
-      <div>
-        <div class="stat-num">\${u.reels_count || 0}</div>
-        <div class="stat-label">Reels</div>
       </div>
     </div>
 
-    <a href="\${deepLink}" class="btn">View Profile on SEERAT</a>
+    <a href="${escDeepLink}" class="btn">View Profile on SEERAT</a>
     <div class="footer-note">SEERAT &bull; Authentic Islamic Platform</div>
   </div>
-
-  <script>
-    // If app is installed, attempt immediate deep link redirect
-    setTimeout(() => {
-      window.location.href = "\${deepLink}";
-    }, 300);
-  </script>
 </body>
-</html>`);
+</html>`;
+
+    // Safety check: NEVER expose JavaScript/template expressions in final HTML sent to browser
+    if (html.includes('${')) {
+      logger.error('CRITICAL: Template expression detected in rendered HTML!');
+      html = html.replace(/\$\{.*?\}/g, '');
+    }
+
+    res.set('Content-Type', 'text/html; charset=utf-8');
+    res.send(html);
   } catch (err: any) {
-    res.status(500).send("Error loading profile");
+    logger.error('Error loading profile share page:', err);
+    res.status(500).send('<!DOCTYPE html><html><body><h3>Unable to load profile at this time. Please try again later.</h3></body></html>');
   }
 });
 
