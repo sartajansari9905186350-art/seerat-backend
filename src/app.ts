@@ -18,10 +18,23 @@ import { getDefaultThumbnailBuffer } from './assets/defaultThumbnail';
 
 const app: Express = express();
 
-// Security Headers - explicitly allow cross-origin media access
+// Security Headers - explicitly allow cross-origin media access and inline scripts/styles for web pages
 app.use(helmet({
   crossOriginResourcePolicy: { policy: 'cross-origin' },
-  crossOriginOpenerPolicy: { policy: 'same-origin-allow-popups' }
+  crossOriginOpenerPolicy: { policy: 'same-origin-allow-popups' },
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'"],
+      scriptSrcAttr: ["'self'", "'unsafe-inline'"],
+      styleSrc: ["'self'", "'unsafe-inline'", "https:"],
+      imgSrc: ["'self'", "data:", "https:"],
+      connectSrc: ["'self'", "https:", "http:"],
+      fontSrc: ["'self'", "https:", "data:"],
+      objectSrc: ["'none'"],
+      upgradeInsecureRequests: null
+    }
+  }
 }));
 
 // CORS Policy with Range headers support
@@ -1474,7 +1487,7 @@ app.get(['/reset-password', '/reset-password/:token'], async (req, res) => {
     })();
 
     async function handleReset(e) {
-      e.preventDefault();
+      if (e && e.preventDefault) e.preventDefault();
       var tokenInput = document.getElementById('tokenInput');
       var token = tokenInput ? tokenInput.value.trim() : '';
 
@@ -1500,18 +1513,21 @@ app.get(['/reset-password', '/reset-password/:token'], async (req, res) => {
       if (!token) {
         errorText.textContent = 'Missing password reset token. Please request a new link from the SEERAT app.';
         errorAlert.style.display = 'flex';
+        console.warn('[RESET_ERROR_UI] Missing token in reset request');
         return;
       }
 
       if (newPassword !== confirmPassword) {
         errorText.textContent = 'Passwords do not match. Please verify both fields.';
         errorAlert.style.display = 'flex';
+        console.warn('[RESET_ERROR_UI] Password confirmation mismatch');
         return;
       }
 
       if (newPassword.length < 6) {
         errorText.textContent = 'Password must be at least 6 characters long.';
         errorAlert.style.display = 'flex';
+        console.warn('[RESET_ERROR_UI] Password too short');
         return;
       }
 
@@ -1521,23 +1537,24 @@ app.get(['/reset-password', '/reset-password/:token'], async (req, res) => {
       confirmPasswordEl.disabled = true;
 
       try {
-        console.log('[RESET_PASSWORD] Submitting reset request | endpoint=/api/auth/reset-password');
+        console.log('[RESET_REQUEST_STARTED] endpoint=/api/auth/reset-password');
         var resp = await fetch('/api/auth/reset-password', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ token: token, newPassword: newPassword })
         });
-        console.log('[RESET_PASSWORD] Response received | HTTP ' + resp.status);
+        console.log('[RESET_RESPONSE_RECEIVED] status=' + resp.status);
 
         var data = null;
         try {
           data = await resp.json();
         } catch (jsonErr) {
-          console.warn('[RESET_PASSWORD] Failed to parse JSON response');
+          console.warn('[RESET_RESPONSE_RECEIVED] Non-JSON payload returned');
         }
 
         var isSuccess = resp.ok && data && (data.success === true || data.status === 'success');
         if (isSuccess) {
+          console.log('[RESET_SUCCESS_UI] Password successfully updated on server');
           var successMsg = (data && data.message) || 'Password changed successfully. You can now log in with your new password.';
           document.getElementById('resetFormContainer').style.display = 'none';
           document.getElementById('openAppContainer').style.display = 'none';
@@ -1551,6 +1568,7 @@ app.get(['/reset-password', '/reset-password/:token'], async (req, res) => {
           } else if (resp.status >= 500) {
             errorMsg = 'Server error occurred. Please try again later.';
           }
+          console.warn('[RESET_ERROR_UI] Server rejected reset | status=' + resp.status);
           errorText.textContent = errorMsg;
           errorAlert.style.display = 'flex';
           submitBtn.disabled = false;
@@ -1559,7 +1577,7 @@ app.get(['/reset-password', '/reset-password/:token'], async (req, res) => {
           confirmPasswordEl.disabled = false;
         }
       } catch (err) {
-        console.error('[RESET_PASSWORD] Network exception | type=' + (err && err.name));
+        console.error('[RESET_ERROR_UI] Network exception | type=' + (err && err.name));
         errorText.textContent = 'Network error. Please check your internet connection and try again.';
         errorAlert.style.display = 'flex';
         submitBtn.disabled = false;
@@ -1568,11 +1586,20 @@ app.get(['/reset-password', '/reset-password/:token'], async (req, res) => {
         confirmPasswordEl.disabled = false;
       }
     }
+
+    // Attach event listeners after DOM load for maximum compatibility
+    document.addEventListener('DOMContentLoaded', function() {
+      var resetForm = document.getElementById('resetForm');
+      if (resetForm) {
+        resetForm.addEventListener('submit', handleReset);
+      }
+    });
   </script>
 </body>
 </html>`;
 
     res.set('Content-Type', 'text/html; charset=utf-8');
+    res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; script-src-attr 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https:; img-src 'self' data: https:; connect-src 'self' https: http:; font-src 'self' https: data:;");
     res.send(html);
   } catch (err: any) {
     logger.error('Error rendering reset password page:', err);
