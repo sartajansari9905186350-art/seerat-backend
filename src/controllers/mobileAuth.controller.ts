@@ -1,11 +1,14 @@
 import { Request, Response, NextFunction } from 'express';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
+import crypto from 'crypto';
 import { v4 as uuidv4 } from 'uuid';
 import { query, withTransaction } from '../config/database';
 import { env } from '../config/env';
 import { ResponseUtil } from '../utils/response';
 import { AuthenticatedUserRequest, UserAuthPayload } from '../middleware/userAuth.middleware';
+import { emailService } from '../services/email.service';
+import { logger } from '../utils/logger';
 
 export class MobileAuthController {
   async signUp(req: Request, res: Response, next: NextFunction): Promise<void> {
@@ -212,10 +215,179 @@ export class MobileAuthController {
   async forgotPassword(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
       const { emailOrPhone } = req.body;
-      ResponseUtil.success(
-        res,
-        `If an account exists for ${emailOrPhone}, a secure recovery message has been sent.`
+      const cleanInput = (emailOrPhone || '').trim().toLowerCase();
+
+      if (!cleanInput) {
+        ResponseUtil.error(res, 'VALIDATION_ERROR', 'Please enter your registered email address or phone number.', 400);
+        return;
+      }
+
+      // 1. Look up user account
+      const userRes = await query(
+        `SELECT id, name, username, email, phone, status
+         FROM users
+         WHERE LOWER(email) = $1 OR LOWER(username) = $1 OR phone = $1`,
+        [cleanInput]
       );
+
+      // Account-enumeration protection message
+      const genericSuccessMsg = 'If an account exists with the provided details, a secure password reset link has been sent to the registered email address.';
+
+      if (userRes.rows.length === 0) {
+        // User not found: do not reveal that user doesn't exist
+        ResponseUtil.success(res, genericSuccessMsg, 'Password reset instructions sent.');
+        return;
+      }
+
+      const user = userRes.rows[0];
+
+      if (!user.email || !user.email.includes('@')) {
+        // User has no email associated: preserve privacy message
+        ResponseUtil.success(res, genericSuccessMsg, 'Password reset instructions sent.');
+        return;
+      }
+
+      // 2. Generate cryptographically secure token (32 bytes hex)
+      const resetToken = crypto.randomBytes(32).toString('hex');
+
+      // 3. Invalidate previous unused reset tokens for this user
+      await query('DELETE FROM password_resets WHERE user_id = $1 AND used_at IS NULL', [user.id]);
+
+      // 4. Save token to password_resets table with 1 hour expiration
+      await query(
+        `INSERT INTO password_resets (id, user_id, token, expires_at, created_at)
+         VALUES ($1, $2, $3, NOW() + INTERVAL '1 hour', CURRENT_TIMESTAMP)`,
+        [uuidv4(), user.id, resetToken]
+      );
+
+      // 5. Send actual email via nodemailer
+      try {
+        await emailService.sendPasswordResetEmail(user.email, resetToken, user.name);
+        ResponseUtil.success(res, 'A secure password reset link has been sent to your registered email address. Please check your inbox.', 'Password reset instructions sent.');
+      } catch (mailErr: any) {
+        logger.error(`[PASSWORD_RESET_SMTP_ERROR] Failed to send email to ${user.email}: ${mailErr.message}`);
+        // Do not falsely claim email sent if delivery failed
+        ResponseUtil.error(
+          res,
+          'EMAIL_DELIVERY_FAILED',
+          'Could not deliver password reset email at this moment. Please verify SMTP email settings or try again shortly.',
+          500
+        );
+      }
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  async verifyResetToken(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const token = (req.query.token as string) || req.params.token;
+      if (!token) {
+        ResponseUtil.error(res, 'VALIDATION_ERROR', 'Reset token is required.', 400);
+        return;
+      }
+
+      const tokenRes = await query(
+        `SELECT pr.id, pr.expires_at, pr.used_at, u.username, u.name
+         FROM password_resets pr
+         JOIN users u ON pr.user_id = u.id
+         WHERE pr.token = $1`,
+        [token]
+      );
+
+      if (tokenRes.rows.length === 0) {
+        ResponseUtil.error(res, 'INVALID_TOKEN', 'This password reset link is invalid or does not exist.', 400);
+        return;
+      }
+
+      const record = tokenRes.rows[0];
+
+      if (record.used_at !== null) {
+        ResponseUtil.error(res, 'TOKEN_ALREADY_USED', 'This password reset link has already been used. Please request a new one.', 400);
+        return;
+      }
+
+      if (new Date(record.expires_at).getTime() < Date.now()) {
+        ResponseUtil.error(res, 'TOKEN_EXPIRED', 'This password reset link has expired. Please request a new one.', 400);
+        return;
+      }
+
+      ResponseUtil.success(res, {
+        valid: true,
+        username: record.username,
+        name: record.name
+      }, 'Token is valid.');
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  async resetPassword(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const { token, newPassword } = req.body;
+
+      if (!token || typeof token !== 'string') {
+        ResponseUtil.error(res, 'VALIDATION_ERROR', 'Reset token is required.', 400);
+        return;
+      }
+
+      if (!newPassword || typeof newPassword !== 'string' || newPassword.length < 6) {
+        ResponseUtil.error(res, 'VALIDATION_ERROR', 'Password must be at least 6 characters long.', 400);
+        return;
+      }
+
+      // Look up token
+      const tokenRes = await query(
+        `SELECT pr.id, pr.user_id, pr.expires_at, pr.used_at, u.username
+         FROM password_resets pr
+         JOIN users u ON pr.user_id = u.id
+         WHERE pr.token = $1`,
+        [token]
+      );
+
+      if (tokenRes.rows.length === 0) {
+        ResponseUtil.error(res, 'INVALID_TOKEN', 'This password reset link is invalid or does not exist.', 400);
+        return;
+      }
+
+      const record = tokenRes.rows[0];
+
+      if (record.used_at !== null) {
+        ResponseUtil.error(res, 'TOKEN_ALREADY_USED', 'This password reset link has already been used.', 400);
+        return;
+      }
+
+      if (new Date(record.expires_at).getTime() < Date.now()) {
+        ResponseUtil.error(res, 'TOKEN_EXPIRED', 'This password reset link has expired.', 400);
+        return;
+      }
+
+      // Hash new password using bcrypt
+      const saltRounds = 12;
+      const passwordHash = await bcrypt.hash(newPassword, saltRounds);
+
+      await withTransaction(async (client) => {
+        // Update user's password
+        await client.query(
+          'UPDATE users SET password_hash = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2',
+          [passwordHash, record.user_id]
+        );
+
+        // Mark token as used
+        await client.query(
+          'UPDATE password_resets SET used_at = CURRENT_TIMESTAMP WHERE id = $1',
+          [record.id]
+        );
+
+        // Invalidate all other reset tokens for this user
+        await client.query(
+          'UPDATE password_resets SET used_at = CURRENT_TIMESTAMP WHERE user_id = $1 AND used_at IS NULL',
+          [record.user_id]
+        );
+      });
+
+      logger.info(`Password successfully reset for user ${record.username}`);
+      ResponseUtil.success(res, true, 'Your password has been reset successfully. You can now sign in with your new password.');
     } catch (err) {
       next(err);
     }

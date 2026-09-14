@@ -22,7 +22,7 @@ export class MobileUserController {
          LEFT JOIN follows f ON f.follower_id = $2 AND f.following_id = u.id
          LEFT JOIN blocked_users b ON b.blocker_id = $2 AND b.blocked_id = u.id
          LEFT JOIN blocked_users b_rev ON b_rev.blocker_id = u.id AND b_rev.blocked_id = $2
-         WHERE u.id = $1`,
+         WHERE (u.id::text = $1 OR LOWER(u.username) = LOWER($1))`,
         [userId, currentUserId]
       );
 
@@ -32,12 +32,13 @@ export class MobileUserController {
       }
 
       const u = userRes.rows[0];
+      const isSelf = (currentUserId === u.id);
       const profile = {
         id: u.id,
         name: u.name,
         username: u.username,
-        email: u.email,
-        phone: u.phone,
+        email: isSelf ? u.email : '',
+        phone: isSelf ? u.phone : null,
         bio: u.bio || '',
         profile_photo: u.profile_photo || '',
         is_verified: u.is_verified || false,
@@ -803,7 +804,7 @@ export class MobileUserController {
       const currentUserId = req.user!.id;
 
       const sql = `
-        SELECT u.id, u.name, u.username, u.email, u.phone, u.is_verified, u.is_private,
+        SELECT u.id, u.name, u.username, u.is_verified, u.is_private,
                p.bio, p.profile_photo, p.followers_count, p.following_count, p.posts_count, p.reels_count,
                b.created_at as blocked_at
         FROM blocked_users b
@@ -819,8 +820,8 @@ export class MobileUserController {
         id: u.id,
         name: u.name,
         username: u.username,
-        email: u.email,
-        phone: u.phone,
+        email: '',
+        phone: null,
         bio: u.bio || '',
         profile_photo: u.profile_photo || '',
         is_verified: u.is_verified || false,

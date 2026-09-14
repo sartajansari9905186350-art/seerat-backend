@@ -28,5 +28,13 @@ export const env = {
   b2ApplicationKey: process.env.B2_APPLICATION_KEY || '',
   b2BucketName: process.env.B2_BUCKET_NAME || 'seerat-media',
   b2Endpoint: process.env.B2_ENDPOINT || 'https://s3.us-east-005.backblazeb2.com',
-  b2Region: process.env.B2_REGION || 'us-east-005'
+  b2Region: process.env.B2_REGION || 'us-east-005',
+  appUrl: process.env.APP_URL || 'https://seerat-backend.onrender.com',
+  smtpHost: process.env.SMTP_HOST || 'smtp.gmail.com',
+  smtpPort: parseInt(process.env.SMTP_PORT || '465', 10),
+  smtpSecure: process.env.SMTP_SECURE === 'true' || process.env.SMTP_PORT === '465' || !process.env.SMTP_PORT,
+  smtpUser: process.env.SMTP_USER || '',
+  smtpPass: process.env.SMTP_PASS || '',
+  smtpFrom: process.env.SMTP_FROM || process.env.SMTP_USER || 'SEERAT <noreply@seerat.app>'
 };
+

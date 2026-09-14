@@ -95,10 +95,21 @@ const checkAndInitSchema = async (): Promise<void> => {
         );
         CREATE INDEX IF NOT EXISTS idx_blocked_users_blocker ON blocked_users(blocker_id);
         CREATE INDEX IF NOT EXISTS idx_blocked_users_blocked ON blocked_users(blocked_id);
+
+        CREATE TABLE IF NOT EXISTS password_resets (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            token VARCHAR(255) NOT NULL UNIQUE,
+            expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
+            used_at TIMESTAMP WITH TIME ZONE DEFAULT NULL,
+            created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE INDEX IF NOT EXISTS idx_password_resets_token ON password_resets(token);
+        CREATE INDEX IF NOT EXISTS idx_password_resets_user_id ON password_resets(user_id);
       `);
-      logger.info('not_interested_reels, user_warnings, comment_likes, and blocked_users tables verified.');
+      logger.info('not_interested_reels, user_warnings, comment_likes, blocked_users, and password_resets tables verified.');
     } catch (tblErr: any) {
-      logger.warn('Could not ensure not_interested_reels / user_warnings / comment_likes / blocked_users tables:', tblErr.message);
+      logger.warn('Could not ensure not_interested_reels / user_warnings / comment_likes / blocked_users / password_resets tables:', tblErr.message);
     }
 
     // Ensure profile photo columns exist across users, profiles, and admin_users
