@@ -1258,60 +1258,98 @@ app.get(['/reset-password', '/reset-password/:token'], async (req, res) => {
       cursor: pointer;
       transition: background 0.2s, opacity 0.2s;
       margin-top: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
     }
     .btn-submit:hover { background: #059669; }
     .btn-submit:disabled { opacity: 0.6; cursor: not-allowed; }
+    
+    .spinner {
+      display: inline-block;
+      width: 16px;
+      height: 16px;
+      border: 2px solid rgba(255, 255, 255, 0.3);
+      border-radius: 50%;
+      border-top-color: #ffffff;
+      animation: spin 0.8s linear infinite;
+      margin-right: 8px;
+    }
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
     .alert-error {
       background: rgba(239, 68, 68, 0.15);
-      border: 1px solid rgba(239, 68, 68, 0.4);
-      color: #f87171;
-      padding: 12px 14px;
-      border-radius: 10px;
-      font-size: 13px;
+      border: 1.5px solid #ef4444;
+      color: #fca5a5;
+      padding: 14px 16px;
+      border-radius: 12px;
+      font-size: 14px;
       margin-bottom: 20px;
-      line-height: 1.4;
+      line-height: 1.5;
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
     }
+    .alert-error-icon {
+      font-size: 18px;
+      line-height: 1;
+      color: #ef4444;
+      flex-shrink: 0;
+    }
+
     .success-box {
       text-align: center;
-      padding: 10px 0;
+      padding: 12px 0;
     }
     .success-icon {
-      width: 56px;
-      height: 56px;
-      background: rgba(16, 185, 129, 0.2);
+      width: 64px;
+      height: 64px;
+      background: rgba(16, 185, 129, 0.15);
       border: 2px solid #10b981;
       border-radius: 50%;
       display: flex;
       align-items: center;
       justify-content: center;
-      margin: 0 auto 16px;
+      margin: 0 auto 20px;
       color: #10b981;
-      font-size: 28px;
+      font-size: 32px;
       font-weight: bold;
     }
     .success-title {
-      font-size: 18px;
-      font-weight: 700;
-      color: #f9fafb;
-      margin-bottom: 8px;
+      font-size: 20px;
+      font-weight: 800;
+      color: #ffffff;
+      margin-bottom: 10px;
     }
     .success-desc {
       font-size: 14px;
-      color: #9ca3af;
-      line-height: 1.5;
+      color: #a7f3d0;
+      line-height: 1.6;
       margin-bottom: 24px;
+      background: rgba(16, 185, 129, 0.1);
+      border: 1px solid rgba(16, 185, 129, 0.3);
+      border-radius: 10px;
+      padding: 14px;
+      text-align: center;
     }
     .btn-open-app {
       display: inline-block;
       width: 100%;
-      padding: 13px;
+      padding: 14px;
       background: #10b981;
       color: #ffffff;
       text-decoration: none;
       border-radius: 10px;
-      font-size: 14px;
+      font-size: 15px;
       font-weight: 700;
       text-align: center;
+      transition: background 0.2s;
+      box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
+    }
+    .btn-open-app:hover {
+      background: #059669;
     }
     .footer-note {
       text-align: center;
@@ -1329,7 +1367,10 @@ app.get(['/reset-password', '/reset-password/:token'], async (req, res) => {
       <div class="brand-subtitle">Reset Your Account Password</div>
     </div>
 
-    <div id="errorAlert" class="alert-error" style="${initialError ? 'display: block;' : 'display: none;'}">${initialError}</div>
+    <div id="errorAlert" class="alert-error" style="${initialError ? 'display: flex;' : 'display: none;'}">
+      <span class="alert-error-icon">&#9888;</span>
+      <span id="errorText">${initialError}</span>
+    </div>
 
     <div id="resetFormContainer" style="${initialError ? 'display: none;' : 'display: block;'}">
       <div id="targetUserContainer" style="${targetUsername ? 'display: block;' : 'display: none;'} font-size: 13px; color: #9ca3af; margin-bottom: 16px; text-align: center;">
@@ -1364,9 +1405,9 @@ app.get(['/reset-password', '/reset-password/:token'], async (req, res) => {
 
     <div id="successContainer" class="success-box" style="display: none;">
       <div class="success-icon">&#10003;</div>
-      <div class="success-title">Password Reset Complete!</div>
-      <div class="success-desc">Your password has been successfully updated. You can now log into the SEERAT mobile app with your new password.</div>
-      <a href="seerat://login" class="btn-open-app">Open SEERAT App</a>
+      <div class="success-title">Password Changed Successfully!</div>
+      <div id="successDesc" class="success-desc">Your password has been successfully updated. You can now log into the SEERAT mobile app with your new password.</div>
+      <a href="seerat://login" class="btn-open-app">Go to Login / Open App</a>
     </div>
 
     <div class="footer-note">SEERAT &bull; Authentic Islamic Social &amp; Video Platform</div>
@@ -1396,7 +1437,7 @@ app.get(['/reset-password', '/reset-password/:token'], async (req, res) => {
 
       var searchParams = new URLSearchParams(window.location.search);
       var hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ''));
-      var pathTokenMatch = window.location.pathname.match(/\/reset-password\/([a-zA-Z0-9]+)/);
+      var pathTokenMatch = window.location.pathname.match(/\\/reset-password\\/([a-zA-Z0-9]+)/);
       var pathToken = pathTokenMatch ? pathTokenMatch[1] : '';
       var clientToken = searchParams.get('token') || searchParams.get('t') || searchParams.get('reset_token') ||
                         hashParams.get('token') || hashParams.get('t') || hashParams.get('reset_token') || pathToken;
@@ -1420,8 +1461,8 @@ app.get(['/reset-password', '/reset-password/:token'], async (req, res) => {
               }
             } else {
               var msg = (resData && resData.error && resData.error.message) || (resData && resData.message) || 'This password reset link is invalid or has expired.';
-              document.getElementById('errorAlert').textContent = msg;
-              document.getElementById('errorAlert').style.display = 'block';
+              document.getElementById('errorText').textContent = msg;
+              document.getElementById('errorAlert').style.display = 'flex';
               document.getElementById('openAppContainer').style.display = 'block';
               document.getElementById('resetFormContainer').style.display = 'none';
             }
@@ -1441,62 +1482,90 @@ app.get(['/reset-password', '/reset-password/:token'], async (req, res) => {
       if (!token) {
         var sp = new URLSearchParams(window.location.search);
         var hp = new URLSearchParams(window.location.hash.replace(/^#/, ''));
-        var ptm = window.location.pathname.match(/\/reset-password\/([a-zA-Z0-9]+)/);
+        var ptm = window.location.pathname.match(/\\/reset-password\\/([a-zA-Z0-9]+)/);
         var pt = ptm ? ptm[1] : '';
         token = (sp.get('token') || sp.get('t') || hp.get('token') || hp.get('t') || pt || '').replace(/[^a-zA-Z0-9]/g, '');
       }
 
-      var newPassword = document.getElementById('newPassword').value.trim();
-      var confirmPassword = document.getElementById('confirmPassword').value.trim();
+      var newPasswordEl = document.getElementById('newPassword');
+      var confirmPasswordEl = document.getElementById('confirmPassword');
+      var newPassword = newPasswordEl ? newPasswordEl.value.trim() : '';
+      var confirmPassword = confirmPasswordEl ? confirmPasswordEl.value.trim() : '';
       var errorAlert = document.getElementById('errorAlert');
+      var errorText = document.getElementById('errorText');
       var submitBtn = document.getElementById('submitBtn');
 
       errorAlert.style.display = 'none';
 
       if (!token) {
-        errorAlert.textContent = 'Missing password reset token. Please request a new link from the SEERAT app.';
-        errorAlert.style.display = 'block';
+        errorText.textContent = 'Missing password reset token. Please request a new link from the SEERAT app.';
+        errorAlert.style.display = 'flex';
         return;
       }
 
       if (newPassword !== confirmPassword) {
-        errorAlert.textContent = 'Passwords do not match. Please verify both fields.';
-        errorAlert.style.display = 'block';
+        errorText.textContent = 'Passwords do not match. Please verify both fields.';
+        errorAlert.style.display = 'flex';
         return;
       }
 
       if (newPassword.length < 6) {
-        errorAlert.textContent = 'Password must be at least 6 characters long.';
-        errorAlert.style.display = 'block';
+        errorText.textContent = 'Password must be at least 6 characters long.';
+        errorAlert.style.display = 'flex';
         return;
       }
 
       submitBtn.disabled = true;
-      submitBtn.textContent = 'Updating password...';
+      submitBtn.innerHTML = '<span class="spinner"></span>Changing password...';
+      newPasswordEl.disabled = true;
+      confirmPasswordEl.disabled = true;
 
       try {
+        console.log('[RESET_PASSWORD] Submitting reset request | endpoint=/api/auth/reset-password');
         var resp = await fetch('/api/auth/reset-password', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ token: token, newPassword: newPassword })
         });
-        var data = await resp.json();
+        console.log('[RESET_PASSWORD] Response received | HTTP ' + resp.status);
 
-        if (resp.ok && data.success) {
+        var data = null;
+        try {
+          data = await resp.json();
+        } catch (jsonErr) {
+          console.warn('[RESET_PASSWORD] Failed to parse JSON response');
+        }
+
+        var isSuccess = resp.ok && data && (data.success === true || data.status === 'success');
+        if (isSuccess) {
+          var successMsg = (data && data.message) || 'Password changed successfully. You can now log in with your new password.';
           document.getElementById('resetFormContainer').style.display = 'none';
           document.getElementById('openAppContainer').style.display = 'none';
+          document.getElementById('errorAlert').style.display = 'none';
+          document.getElementById('successDesc').textContent = successMsg;
           document.getElementById('successContainer').style.display = 'block';
         } else {
-          errorAlert.textContent = (data.error && data.error.message) || data.message || 'Failed to reset password. Please try again.';
-          errorAlert.style.display = 'block';
+          var errorMsg = (data && data.error && data.error.message) || (data && data.message) || (data && data.errorMessage) || 'Failed to update password. Please request a new link or try again.';
+          if (resp.status === 400 && (!data || !data.error)) {
+            errorMsg = 'Invalid or expired password reset link. Please request a new link from the SEERAT app.';
+          } else if (resp.status >= 500) {
+            errorMsg = 'Server error occurred. Please try again later.';
+          }
+          errorText.textContent = errorMsg;
+          errorAlert.style.display = 'flex';
           submitBtn.disabled = false;
-          submitBtn.textContent = 'Update Password';
+          submitBtn.innerHTML = 'Update Password';
+          newPasswordEl.disabled = false;
+          confirmPasswordEl.disabled = false;
         }
       } catch (err) {
-        errorAlert.textContent = 'Network error. Please check your internet connection and try again.';
-        errorAlert.style.display = 'block';
+        console.error('[RESET_PASSWORD] Network exception | type=' + (err && err.name));
+        errorText.textContent = 'Network error. Please check your internet connection and try again.';
+        errorAlert.style.display = 'flex';
         submitBtn.disabled = false;
-        submitBtn.textContent = 'Update Password';
+        submitBtn.innerHTML = 'Update Password';
+        newPasswordEl.disabled = false;
+        confirmPasswordEl.disabled = false;
       }
     }
   </script>
