@@ -265,12 +265,12 @@ export class MobileAuthController {
         await emailService.sendPasswordResetEmail(user.email, resetToken, user.name);
         ResponseUtil.success(res, 'A secure password reset link has been sent to your registered email address. Please check your inbox.', 'Password reset instructions sent.');
       } catch (mailErr: any) {
-        logger.error(`[PASSWORD_RESET_SMTP_ERROR] Failed to send email to ${user.email}: ${mailErr.message}`);
+        logger.error(`[PASSWORD_RESET_DELIVERY_ERROR] Failed to send email to ${user.email}: ${mailErr.message}`);
         // Do not falsely claim email sent if delivery failed
         ResponseUtil.error(
           res,
           'EMAIL_DELIVERY_FAILED',
-          'Could not deliver password reset email at this moment. Please verify SMTP email settings or try again shortly.',
+          'Could not deliver password reset email at this moment. Please verify email settings or try again shortly.',
           500
         );
       }

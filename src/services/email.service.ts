@@ -11,37 +11,35 @@ class EmailService {
         throw new Error('SMTP credentials are not configured. Please set SMTP_USER and SMTP_PASS environment variables.');
       }
 
+      const isSecure = env.smtpPort === 465 || env.smtpSecure;
+
       this.transporter = nodemailer.createTransport({
         host: env.smtpHost,
         port: env.smtpPort,
-        secure: env.smtpSecure,
+        secure: isSecure,
+        requireTLS: !isSecure, // Requires STARTTLS on port 587
         auth: {
           user: env.smtpUser,
           pass: env.smtpPass
         },
-        tls: {
-          rejectUnauthorized: false
-        }
+        connectionTimeout: 10000,
+        greetingTimeout: 10000,
+        socketTimeout: 15000
       });
     }
     return this.transporter;
   }
 
   /**
-   * Sends a branded SEERAT password reset email
+   * Sends a branded SEERAT password reset email via Resend HTTPS API (Primary)
    */
   async sendPasswordResetEmail(toEmail: string, resetToken: string, recipientName?: string): Promise<boolean> {
-    const transporter = this.getTransporter();
-
     const resetUrl = `${env.appUrl}/reset-password?token=${encodeURIComponent(resetToken)}`;
     const displayName = recipientName?.trim() || 'Valued User';
 
-    const mailOptions: SendMailOptions = {
-      from: env.smtpFrom,
-      to: toEmail,
-      subject: 'SEERAT - Reset Your Account Password',
-      text: `Assalamu Alaikum ${displayName},\n\nWe received a request to reset the password for your SEERAT account.\n\nPlease use the following link to set a new password:\n${resetUrl}\n\nThis link is valid for 1 hour and can only be used once.\n\nIf you did not request this, please ignore this message. Your account remains completely secure.\n\nWas-Salam,\nSEERAT Team\nAuthentic Islamic Social & Video Platform`,
-      html: `
+    const subject = 'SEERAT - Reset Your Account Password';
+    const textContent = `Assalamu Alaikum ${displayName},\n\nWe received a request to reset the password for your SEERAT account.\n\nPlease use the following link to set a new password:\n${resetUrl}\n\nThis link is valid for 1 hour and can only be used once.\n\nIf you did not request this, please ignore this message. Your account remains completely secure.\n\nWas-Salam,\nSEERAT Team\nAuthentic Islamic Social & Video Platform`;
+    const htmlContent = `
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -94,12 +92,94 @@ class EmailService {
   </div>
 </body>
 </html>
-      `
+    `;
+
+    // Check for Resend API key dynamically at runtime as well as from env config
+    const resendKey = (process.env.RESEND_API_KEY || env.resendApiKey || '').trim();
+    const hasResend = resendKey.length > 0;
+
+    logger.info(`[EMAIL_SERVICE] Provider selection: RESEND_CONFIGURED=${hasResend}`);
+
+    // 1. Primary Method: Resend HTTPS REST API (Bypasses Render Free SMTP port blocks)
+    if (hasResend) {
+      logger.info(`[EMAIL_SERVICE] Initiating password reset delivery | Provider: RESEND_HTTPS`);
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 10000);
+
+      try {
+        const senderFrom = (process.env.SMTP_FROM || process.env.RESEND_FROM || env.smtpFrom || 'SEERAT <onboarding@resend.dev>').trim();
+        const response = await fetch('https://api.resend.com/emails', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${resendKey}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            from: senderFrom,
+            to: [toEmail],
+            subject: subject,
+            text: textContent,
+            html: htmlContent
+          }),
+          signal: controller.signal
+        });
+
+        clearTimeout(timeoutId);
+
+        if (response.ok) {
+          const data: any = await response.json();
+          logger.info(`[EMAIL_SERVICE] Password reset email successfully delivered via Resend HTTPS [MessageId: ${data?.id || 'ok'}]`);
+          return true;
+        } else {
+          const errData: any = await response.json().catch(() => ({}));
+          const errMsg = errData?.message || errData?.error || `HTTP ${response.status} ${response.statusText}`;
+          logger.error(`[RESEND_API_ERROR] Delivery failed via Resend API: ${errMsg}`);
+          throw new Error(`Resend email delivery failed: ${errMsg}`);
+        }
+      } catch (fetchErr: any) {
+        clearTimeout(timeoutId);
+        if (fetchErr.name === 'AbortError') {
+          logger.error(`[RESEND_TIMEOUT] Request to Resend API timed out after 10s`);
+          throw new Error('Email service request timed out.');
+        }
+        throw fetchErr;
+      }
+    }
+
+    // 2. Production Safety: If RESEND_API_KEY is missing, throw configuration error immediately without attempting SMTP
+    const isProduction = env.nodeEnv === 'production' || process.env.RENDER === 'true';
+    const hasLocalSmtp = Boolean((process.env.SMTP_USER || env.smtpUser) && (process.env.SMTP_PASS || env.smtpPass));
+
+    if (isProduction || !hasLocalSmtp) {
+      logger.error('[EMAIL_SERVICE] Password reset delivery halted: RESEND_API_KEY is not configured in environment variables.');
+      throw new Error('Email delivery is not configured. Please set RESEND_API_KEY in Render environment variables.');
+    }
+
+    // 3. Local Development Fallback Only (Non-production)
+    logger.warn(`[EMAIL_SERVICE] Local development fallback: using SMTP (${env.smtpHost}:${env.smtpPort})`);
+    const transporter = this.getTransporter();
+    const mailOptions: SendMailOptions = {
+      from: env.smtpFrom,
+      to: toEmail,
+      subject: subject,
+      text: textContent,
+      html: htmlContent
     };
 
     const info = await transporter.sendMail(mailOptions);
-    logger.info(`Password reset email successfully sent to ${toEmail} [MessageId: ${info.messageId}]`);
+    logger.info(`Password reset email sent via local SMTP to ${toEmail} [MessageId: ${info.messageId}]`);
     return true;
+  }
+
+  isResendConfigured(): boolean {
+    const key = (process.env.RESEND_API_KEY || env.resendApiKey || '').trim();
+    return key.length > 0;
+  }
+
+  isSmtpConfigured(): boolean {
+    const user = (process.env.SMTP_USER || env.smtpUser || '').trim();
+    const pass = (process.env.SMTP_PASS || env.smtpPass || '').trim();
+    return user.length > 0 && pass.length > 0;
   }
 }
 

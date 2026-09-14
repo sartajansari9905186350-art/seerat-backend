@@ -6,6 +6,7 @@ import { runMigration } from '../database/migrate';
 import { ensurePostgresRunning } from '../database/startDb';
 import bcrypt from 'bcryptjs';
 import { v4 as uuidv4 } from 'uuid';
+import { emailService } from './services/email.service';
 
 const checkAndInitSchema = async (): Promise<void> => {
   try {
@@ -321,6 +322,12 @@ const startServer = async (): Promise<void> => {
       logger.info(`  SEERAT Admin Backend running on port: ${env.port}`);
       logger.info(`  Environment: ${env.nodeEnv}`);
       logger.info(`  Health Endpoint: http://localhost:${env.port}/api/health`);
+      const resendReady = emailService.isResendConfigured();
+      const smtpReady = emailService.isSmtpConfigured();
+      logger.info(`  [EMAIL_SERVICE] RESEND_CONFIGURED=${resendReady} | SMTP_FALLBACK_CONFIGURED=${smtpReady}`);
+      if (!resendReady) {
+        logger.warn(`  [EMAIL_SERVICE] Notice: RESEND_API_KEY is not set. Render Free blocks SMTP ports (587/465). Ensure RESEND_API_KEY is set in Render dashboard.`);
+      }
       logger.info(`=======================================================`);
     });
   } catch (err: any) {

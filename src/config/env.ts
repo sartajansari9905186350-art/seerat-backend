@@ -30,11 +30,12 @@ export const env = {
   b2Endpoint: process.env.B2_ENDPOINT || 'https://s3.us-east-005.backblazeb2.com',
   b2Region: process.env.B2_REGION || 'us-east-005',
   appUrl: process.env.APP_URL || 'https://seerat-backend.onrender.com',
+  resendApiKey: process.env.RESEND_API_KEY || '',
   smtpHost: process.env.SMTP_HOST || 'smtp.gmail.com',
-  smtpPort: parseInt(process.env.SMTP_PORT || '465', 10),
-  smtpSecure: process.env.SMTP_SECURE === 'true' || process.env.SMTP_PORT === '465' || !process.env.SMTP_PORT,
+  smtpPort: parseInt(process.env.SMTP_PORT || '587', 10),
+  smtpSecure: process.env.SMTP_SECURE === 'true',
   smtpUser: process.env.SMTP_USER || '',
   smtpPass: process.env.SMTP_PASS || '',
-  smtpFrom: process.env.SMTP_FROM || process.env.SMTP_USER || 'SEERAT <noreply@seerat.app>'
+  smtpFrom: process.env.SMTP_FROM || process.env.RESEND_FROM || (process.env.SMTP_USER ? `SEERAT <${process.env.SMTP_USER}>` : 'SEERAT <onboarding@resend.dev>')
 };
 

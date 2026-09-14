@@ -1336,6 +1336,329 @@ app.get(['/r/:reelId', '/api/reels/:reelId/share'], async (req, res) => {
   }
 });
 
+// Web-based Password Reset Page (served to users who click the email reset link)
+app.get('/reset-password', async (req, res) => {
+  try {
+    const rawToken = (req.query.token as string) || '';
+    const cleanToken = rawToken.replace(/[^a-zA-Z0-9]/g, '');
+
+    // Check if token exists and is valid
+    let initialError = '';
+    let targetUsername = '';
+
+    if (!cleanToken) {
+      initialError = 'Invalid or missing password reset token. Please request a new link from the SEERAT app.';
+    } else {
+      const tokenRes = await query(
+        `SELECT pr.id, pr.expires_at, pr.used_at, u.username, u.name
+         FROM password_resets pr
+         JOIN users u ON pr.user_id = u.id
+         WHERE pr.token = $1`,
+        [cleanToken]
+      );
+
+      if (tokenRes.rows.length === 0) {
+        initialError = 'This password reset link is invalid or does not exist.';
+      } else {
+        const record = tokenRes.rows[0];
+        if (record.used_at !== null) {
+          initialError = 'This password reset link has already been used. Please request a new one from the SEERAT app.';
+        } else if (new Date(record.expires_at).getTime() < Date.now()) {
+          initialError = 'This password reset link has expired. Please request a new one from the SEERAT app.';
+        } else {
+          targetUsername = record.username || record.name || '';
+        }
+      }
+    }
+
+    const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Reset Password - SEERAT</title>
+  <link rel="icon" type="image/png" href="https://seerat-backend.onrender.com/assets/logo.png">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+      background: #090d16;
+      color: #f8fafc;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px 16px;
+    }
+    .card {
+      width: 100%;
+      max-width: 440px;
+      background: #111827;
+      border: 1px solid #1f2937;
+      border-radius: 20px;
+      padding: 32px 28px;
+      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.5);
+    }
+    .brand-header {
+      text-align: center;
+      margin-bottom: 28px;
+    }
+    .brand-logo {
+      width: 60px;
+      height: 60px;
+      border-radius: 14px;
+      margin-bottom: 12px;
+    }
+    .brand-title {
+      font-size: 22px;
+      font-weight: 800;
+      color: #10b981;
+      letter-spacing: 3px;
+      margin-bottom: 4px;
+    }
+    .brand-subtitle {
+      font-size: 13px;
+      color: #9ca3af;
+    }
+    .form-group {
+      margin-bottom: 20px;
+    }
+    .form-label {
+      display: block;
+      font-size: 13px;
+      font-weight: 600;
+      color: #e5e7eb;
+      margin-bottom: 8px;
+    }
+    .input-wrapper {
+      position: relative;
+      display: flex;
+      align-items: center;
+    }
+    .form-input {
+      width: 100%;
+      padding: 13px 44px 13px 14px;
+      background: #1f2937;
+      border: 1.5px solid #374151;
+      border-radius: 10px;
+      color: #ffffff;
+      font-size: 15px;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+    .form-input:focus {
+      border-color: #10b981;
+    }
+    .toggle-pwd {
+      position: absolute;
+      right: 12px;
+      background: none;
+      border: none;
+      color: #9ca3af;
+      cursor: pointer;
+      font-size: 13px;
+      padding: 4px;
+    }
+    .toggle-pwd:hover { color: #f3f4f6; }
+    .btn-submit {
+      width: 100%;
+      padding: 14px;
+      background: #047857;
+      color: #ffffff;
+      font-size: 15px;
+      font-weight: 700;
+      border: none;
+      border-radius: 10px;
+      cursor: pointer;
+      transition: background 0.2s, opacity 0.2s;
+      margin-top: 8px;
+    }
+    .btn-submit:hover { background: #059669; }
+    .btn-submit:disabled { opacity: 0.6; cursor: not-allowed; }
+    .alert-error {
+      background: rgba(239, 68, 68, 0.15);
+      border: 1px solid rgba(239, 68, 68, 0.4);
+      color: #f87171;
+      padding: 12px 14px;
+      border-radius: 10px;
+      font-size: 13px;
+      margin-bottom: 20px;
+      line-height: 1.4;
+    }
+    .success-box {
+      text-align: center;
+      padding: 10px 0;
+    }
+    .success-icon {
+      width: 56px;
+      height: 56px;
+      background: rgba(16, 185, 129, 0.2);
+      border: 2px solid #10b981;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin: 0 auto 16px;
+      color: #10b981;
+      font-size: 28px;
+      font-weight: bold;
+    }
+    .success-title {
+      font-size: 18px;
+      font-weight: 700;
+      color: #f9fafb;
+      margin-bottom: 8px;
+    }
+    .success-desc {
+      font-size: 14px;
+      color: #9ca3af;
+      line-height: 1.5;
+      margin-bottom: 24px;
+    }
+    .btn-open-app {
+      display: inline-block;
+      width: 100%;
+      padding: 13px;
+      background: #10b981;
+      color: #ffffff;
+      text-decoration: none;
+      border-radius: 10px;
+      font-size: 14px;
+      font-weight: 700;
+      text-align: center;
+    }
+    .footer-note {
+      text-align: center;
+      font-size: 12px;
+      color: #6b7280;
+      margin-top: 24px;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="brand-header">
+      <img src="https://seerat-backend.onrender.com/assets/logo.png" class="brand-logo" alt="SEERAT">
+      <div class="brand-title">SEERAT</div>
+      <div class="brand-subtitle">Reset Your Account Password</div>
+    </div>
+
+    <div id="errorAlert" class="alert-error" style="${initialError ? 'display: block;' : 'display: none;'}">${initialError}</div>
+
+    ${initialError ? `
+      <div style="text-align: center; margin-top: 16px;">
+        <a href="seerat://login" class="btn-open-app">Open SEERAT App</a>
+      </div>
+    ` : `
+      <div id="resetFormContainer">
+        ${targetUsername ? `<div style="font-size: 13px; color: #9ca3af; margin-bottom: 16px; text-align: center;">Resetting password for: <strong style="color: #34d399;">@${targetUsername}</strong></div>` : ''}
+        <form id="resetForm" onsubmit="handleReset(event)">
+          <input type="hidden" id="tokenInput" value="${cleanToken}">
+          
+          <div class="form-group">
+            <label class="form-label" for="newPassword">New Password (min 6 characters)</label>
+            <div class="input-wrapper">
+              <input type="password" id="newPassword" class="form-input" required minlength="6" placeholder="Enter new password" autocomplete="new-password">
+              <button type="button" class="toggle-pwd" onclick="toggleVisibility('newPassword', this)">Show</button>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label" for="confirmPassword">Confirm New Password</label>
+            <div class="input-wrapper">
+              <input type="password" id="confirmPassword" class="form-input" required minlength="6" placeholder="Re-enter new password" autocomplete="new-password">
+              <button type="button" class="toggle-pwd" onclick="toggleVisibility('confirmPassword', this)">Show</button>
+            </div>
+          </div>
+
+          <button type="submit" id="submitBtn" class="btn-submit">Update Password</button>
+        </form>
+      </div>
+
+      <div id="successContainer" class="success-box" style="display: none;">
+        <div class="success-icon">&#10003;</div>
+        <div class="success-title">Password Reset Complete!</div>
+        <div class="success-desc">Your password has been successfully updated. You can now log into the SEERAT mobile app with your new password.</div>
+        <a href="seerat://login" class="btn-open-app">Open SEERAT App</a>
+      </div>
+    `}
+
+    <div class="footer-note">SEERAT &bull; Authentic Islamic Social &amp; Video Platform</div>
+  </div>
+
+  <script>
+    function toggleVisibility(fieldId, btn) {
+      var field = document.getElementById(fieldId);
+      if (field.type === 'password') {
+        field.type = 'text';
+        btn.textContent = 'Hide';
+      } else {
+        field.type = 'password';
+        btn.textContent = 'Show';
+      }
+    }
+
+    async function handleReset(e) {
+      e.preventDefault();
+      var token = document.getElementById('tokenInput').value;
+      var newPassword = document.getElementById('newPassword').value;
+      var confirmPassword = document.getElementById('confirmPassword').value;
+      var errorAlert = document.getElementById('errorAlert');
+      var submitBtn = document.getElementById('submitBtn');
+
+      errorAlert.style.display = 'none';
+
+      if (newPassword !== confirmPassword) {
+        errorAlert.textContent = 'Passwords do not match. Please verify both fields.';
+        errorAlert.style.display = 'block';
+        return;
+      }
+
+      if (newPassword.length < 6) {
+        errorAlert.textContent = 'Password must be at least 6 characters long.';
+        errorAlert.style.display = 'block';
+        return;
+      }
+
+      submitBtn.disabled = true;
+      submitBtn.textContent = 'Updating password...';
+
+      try {
+        var resp = await fetch('/api/mobile/auth/reset-password', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ token: token, newPassword: newPassword })
+        });
+        var data = await resp.json();
+
+        if (resp.ok && data.success) {
+          document.getElementById('resetFormContainer').style.display = 'none';
+          document.getElementById('successContainer').style.display = 'block';
+        } else {
+          errorAlert.textContent = data.message || (data.error && data.error.message) || 'Failed to reset password. Please try again.';
+          errorAlert.style.display = 'block';
+          submitBtn.disabled = false;
+          submitBtn.textContent = 'Update Password';
+        }
+      } catch (err) {
+        errorAlert.textContent = 'Network error. Please check your internet connection and try again.';
+        errorAlert.style.display = 'block';
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Update Password';
+      }
+    }
+  </script>
+</body>
+</html>`;
+
+    res.set('Content-Type', 'text/html; charset=utf-8');
+    res.send(html);
+  } catch (err: any) {
+    logger.error('Error rendering reset password page:', err);
+    res.status(500).send('<!DOCTYPE html><html><body><h3>Unable to load password reset page. Please try again later.</h3></body></html>');
+  }
+});
+
 // Mount Admin REST API
 app.use('/api/admin', adminRouter);
 
