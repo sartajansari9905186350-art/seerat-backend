@@ -1236,7 +1236,7 @@ app.get(['/reset-password', '/reset-password/:token'], async (req, res) => {
     }
     .form-input {
       width: 100%;
-      padding: 13px 44px 13px 14px;
+      padding: 13px 48px 13px 14px;
       background: #1f2937;
       border: 1.5px solid #374151;
       border-radius: 10px;
@@ -1250,15 +1250,22 @@ app.get(['/reset-password', '/reset-password/:token'], async (req, res) => {
     }
     .toggle-pwd {
       position: absolute;
-      right: 12px;
+      right: 10px;
       background: none;
       border: none;
       color: #9ca3af;
       cursor: pointer;
-      font-size: 13px;
-      padding: 4px;
+      padding: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 6px;
+      transition: color 0.2s, background-color 0.2s;
     }
-    .toggle-pwd:hover { color: #f3f4f6; }
+    .toggle-pwd:hover {
+      color: #ffffff;
+      background-color: rgba(255, 255, 255, 0.08);
+    }
     .btn-submit {
       width: 100%;
       padding: 14px;
@@ -1275,8 +1282,15 @@ app.get(['/reset-password', '/reset-password/:token'], async (req, res) => {
       align-items: center;
       justify-content: center;
     }
-    .btn-submit:hover { background: #059669; }
-    .btn-submit:disabled { opacity: 0.6; cursor: not-allowed; }
+    .btn-submit:hover:not(:disabled) {
+      background: #059669;
+    }
+    .btn-submit:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+      background: #1f2937;
+      color: #9ca3af;
+    }
     
     .spinner {
       display: inline-block;
@@ -1393,22 +1407,26 @@ app.get(['/reset-password', '/reset-password/:token'], async (req, res) => {
         <input type="hidden" id="tokenInput" value="${cleanToken}">
         
         <div class="form-group">
-          <label class="form-label" for="newPassword">New Password (min 6 characters)</label>
+          <label class="form-label" for="newPassword">New Password</label>
           <div class="input-wrapper">
-            <input type="password" id="newPassword" class="form-input" required minlength="6" placeholder="Enter new password" autocomplete="new-password">
-            <button type="button" class="toggle-pwd" onclick="toggleVisibility('newPassword', this)">Show</button>
+            <input type="password" id="newPassword" class="form-input" required minlength="6" placeholder="Enter new password (min 6 characters)" autocomplete="new-password">
+            <button type="button" class="toggle-pwd" id="toggleNewPwd" onclick="toggleVisibility('newPassword', this)" title="Show password" aria-label="Show password">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+            </button>
           </div>
         </div>
 
         <div class="form-group">
-          <label class="form-label" for="confirmPassword">Confirm New Password</label>
+          <label class="form-label" for="confirmPassword">Confirm Password</label>
           <div class="input-wrapper">
             <input type="password" id="confirmPassword" class="form-input" required minlength="6" placeholder="Re-enter new password" autocomplete="new-password">
-            <button type="button" class="toggle-pwd" onclick="toggleVisibility('confirmPassword', this)">Show</button>
+            <button type="button" class="toggle-pwd" id="toggleConfirmPwd" onclick="toggleVisibility('confirmPassword', this)" title="Show password" aria-label="Show password">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+            </button>
           </div>
         </div>
 
-        <button type="submit" id="submitBtn" class="btn-submit">Update Password</button>
+        <button type="submit" id="submitBtn" class="btn-submit" disabled>Update Password</button>
       </form>
     </div>
 
@@ -1419,7 +1437,7 @@ app.get(['/reset-password', '/reset-password/:token'], async (req, res) => {
     <div id="successContainer" class="success-box" style="display: none;">
       <div class="success-icon">&#10003;</div>
       <div class="success-title">Password Changed Successfully!</div>
-      <div id="successDesc" class="success-desc">Your password has been successfully updated. You can now log into the SEERAT mobile app with your new password.</div>
+      <div id="successDesc" class="success-desc">Your password has been successfully updated. You can now log in to SEERAT.</div>
       <a href="seerat://login" class="btn-open-app">Go to Login / Open App</a>
     </div>
 
@@ -1427,15 +1445,58 @@ app.get(['/reset-password', '/reset-password/:token'], async (req, res) => {
   </div>
 
   <script>
+    var eyeOpenSvg = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>';
+    var eyeSlashSvg = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>';
+
     function toggleVisibility(fieldId, btn) {
       var field = document.getElementById(fieldId);
-      if (field.type === 'password') {
-        field.type = 'text';
-        btn.textContent = 'Hide';
-      } else {
-        field.type = 'password';
-        btn.textContent = 'Show';
+      if (!field) return;
+      var isPwd = field.type === 'password';
+      field.type = isPwd ? 'text' : 'password';
+      btn.innerHTML = isPwd ? eyeSlashSvg : eyeOpenSvg;
+      btn.setAttribute('title', isPwd ? 'Hide password' : 'Show password');
+      btn.setAttribute('aria-label', isPwd ? 'Hide password' : 'Show password');
+    }
+
+    function validateForm() {
+      var p1El = document.getElementById('newPassword');
+      var p2El = document.getElementById('confirmPassword');
+      var p1 = p1El ? p1El.value.trim() : '';
+      var p2 = p2El ? p2El.value.trim() : '';
+      var submitBtn = document.getElementById('submitBtn');
+      var errorAlert = document.getElementById('errorAlert');
+      var errorText = document.getElementById('errorText');
+
+      if (!submitBtn) return;
+      if (submitBtn.disabled && submitBtn.textContent.includes('Changing')) return;
+
+      if (!p1 && !p2) {
+        submitBtn.disabled = true;
+        errorAlert.style.display = 'none';
+        return;
       }
+
+      if (p1.length > 0 && p1.length < 6) {
+        submitBtn.disabled = true;
+        errorText.textContent = 'Password must be at least 6 characters long.';
+        errorAlert.style.display = 'flex';
+        return;
+      }
+
+      if (p1.length >= 6 && p2.length > 0 && p1 !== p2) {
+        submitBtn.disabled = true;
+        errorText.textContent = 'Passwords do not match.';
+        errorAlert.style.display = 'flex';
+        return;
+      }
+
+      if (p1.length >= 6 && p1 === p2) {
+        submitBtn.disabled = false;
+        errorAlert.style.display = 'none';
+        return;
+      }
+
+      submitBtn.disabled = true;
     }
 
     // Client-side fallback check in case token was in URL hash or stripped during initial SSR
@@ -1517,17 +1578,17 @@ app.get(['/reset-password', '/reset-password/:token'], async (req, res) => {
         return;
       }
 
-      if (newPassword !== confirmPassword) {
-        errorText.textContent = 'Passwords do not match. Please verify both fields.';
-        errorAlert.style.display = 'flex';
-        console.warn('[RESET_ERROR_UI] Password confirmation mismatch');
-        return;
-      }
-
       if (newPassword.length < 6) {
         errorText.textContent = 'Password must be at least 6 characters long.';
         errorAlert.style.display = 'flex';
         console.warn('[RESET_ERROR_UI] Password too short');
+        return;
+      }
+
+      if (newPassword !== confirmPassword) {
+        errorText.textContent = 'Passwords do not match.';
+        errorAlert.style.display = 'flex';
+        console.warn('[RESET_ERROR_UI] Password confirmation mismatch');
         return;
       }
 
@@ -1555,7 +1616,7 @@ app.get(['/reset-password', '/reset-password/:token'], async (req, res) => {
         var isSuccess = resp.ok && data && (data.success === true || data.status === 'success');
         if (isSuccess) {
           console.log('[RESET_SUCCESS_UI] Password successfully updated on server');
-          var successMsg = (data && data.message) || 'Password changed successfully. You can now log in with your new password.';
+          var successMsg = (data && data.message) || 'Your password has been successfully updated. You can now log in to SEERAT.';
           document.getElementById('resetFormContainer').style.display = 'none';
           document.getElementById('openAppContainer').style.display = 'none';
           document.getElementById('errorAlert').style.display = 'none';
@@ -1575,6 +1636,7 @@ app.get(['/reset-password', '/reset-password/:token'], async (req, res) => {
           submitBtn.innerHTML = 'Update Password';
           newPasswordEl.disabled = false;
           confirmPasswordEl.disabled = false;
+          validateForm();
         }
       } catch (err) {
         console.error('[RESET_ERROR_UI] Network exception | type=' + (err && err.name));
@@ -1584,6 +1646,7 @@ app.get(['/reset-password', '/reset-password/:token'], async (req, res) => {
         submitBtn.innerHTML = 'Update Password';
         newPasswordEl.disabled = false;
         confirmPasswordEl.disabled = false;
+        validateForm();
       }
     }
 
@@ -1593,6 +1656,15 @@ app.get(['/reset-password', '/reset-password/:token'], async (req, res) => {
       if (resetForm) {
         resetForm.addEventListener('submit', handleReset);
       }
+      var p1El = document.getElementById('newPassword');
+      var p2El = document.getElementById('confirmPassword');
+      if (p1El) {
+        p1El.addEventListener('input', validateForm);
+      }
+      if (p2El) {
+        p2El.addEventListener('input', validateForm);
+      }
+      validateForm();
     });
   </script>
 </body>
