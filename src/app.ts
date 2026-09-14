@@ -1117,8 +1117,16 @@ app.get(['/reset-password', '/reset-password/:token'], async (req, res) => {
     } catch {}
     const cleanToken = (decodedToken || '').trim().replace(/[^a-zA-Z0-9]/g, '');
 
+    const queryTokenRaw = req.query.token;
+    const queryTokenPresent = Boolean(queryTokenRaw && (typeof queryTokenRaw === 'string' ? queryTokenRaw.trim().length > 0 : Array.isArray(queryTokenRaw)));
+    const queryTokenLen = typeof queryTokenRaw === 'string' ? queryTokenRaw.trim().length : (Array.isArray(queryTokenRaw) && typeof queryTokenRaw[0] === 'string' ? queryTokenRaw[0].trim().length : 0);
+    const paramTokenPresent = Boolean((req.params as any)?.token && typeof (req.params as any).token === 'string' && (req.params as any).token.trim().length > 0);
+    const refererPresent = Boolean(req.headers['referer'] || req.headers['referrer']);
+    const userAgentPresent = Boolean(req.headers['user-agent']);
+
+    logger.info(`[PASSWORD_RESET_CLICK_DIAGNOSTIC] REQUEST_PATH=${req.path} | QUERY_TOKEN_PRESENT=${queryTokenPresent} | QUERY_TOKEN_LENGTH=${queryTokenLen} | PARAM_TOKEN_PRESENT=${paramTokenPresent} | REFERER_PRESENT=${refererPresent} | USER_AGENT_PRESENT=${userAgentPresent}`);
+
     const hasToken = cleanToken.length > 0;
-    logger.info(`[PASSWORD_RESET_PAGE] GET /reset-password requested | TOKEN_PRESENT=${hasToken} | TOKEN_LENGTH=${cleanToken.length}`);
 
     // Check if token exists and is valid on server
     let initialError = '';
@@ -1388,8 +1396,10 @@ app.get(['/reset-password', '/reset-password/:token'], async (req, res) => {
 
       var searchParams = new URLSearchParams(window.location.search);
       var hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ''));
+      var pathTokenMatch = window.location.pathname.match(/\/reset-password\/([a-zA-Z0-9]+)/);
+      var pathToken = pathTokenMatch ? pathTokenMatch[1] : '';
       var clientToken = searchParams.get('token') || searchParams.get('t') || searchParams.get('reset_token') ||
-                        hashParams.get('token') || hashParams.get('t') || hashParams.get('reset_token');
+                        hashParams.get('token') || hashParams.get('t') || hashParams.get('reset_token') || pathToken;
 
       if (clientToken) {
         clientToken = clientToken.replace(/[^a-zA-Z0-9]/g, '');
@@ -1427,11 +1437,13 @@ app.get(['/reset-password', '/reset-password/:token'], async (req, res) => {
       var tokenInput = document.getElementById('tokenInput');
       var token = tokenInput ? tokenInput.value.trim() : '';
 
-      // Fallback to URL search or hash param if input was somehow empty
+      // Fallback to URL search, hash param, or pathname if input was somehow empty
       if (!token) {
         var sp = new URLSearchParams(window.location.search);
         var hp = new URLSearchParams(window.location.hash.replace(/^#/, ''));
-        token = (sp.get('token') || sp.get('t') || hp.get('token') || hp.get('t') || '').replace(/[^a-zA-Z0-9]/g, '');
+        var ptm = window.location.pathname.match(/\/reset-password\/([a-zA-Z0-9]+)/);
+        var pt = ptm ? ptm[1] : '';
+        token = (sp.get('token') || sp.get('t') || hp.get('token') || hp.get('t') || pt || '').replace(/[^a-zA-Z0-9]/g, '');
       }
 
       var newPassword = document.getElementById('newPassword').value.trim();

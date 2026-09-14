@@ -35,7 +35,7 @@ class EmailService {
    */
   async sendPasswordResetEmail(toEmail: string, resetToken: string, recipientName?: string): Promise<boolean> {
     const baseAppUrl = (process.env.APP_URL || env.appUrl || 'https://seerat-backend.onrender.com').trim().replace(/\/+$/, '');
-    const resetUrl = `${baseAppUrl}/reset-password?token=${encodeURIComponent(resetToken)}`;
+    const resetUrl = `${baseAppUrl}/reset-password/${encodeURIComponent(resetToken)}`;
     const displayName = recipientName?.trim() || 'Valued User';
 
     const subject = 'SEERAT - Reset Your Account Password';
