@@ -132,9 +132,11 @@ class EmailService {
           return true;
         } else {
           const errData: any = await response.json().catch(() => ({}));
-          const errMsg = errData?.message || errData?.error || `HTTP ${response.status} ${response.statusText}`;
-          logger.error(`[RESEND_API_ERROR] Delivery failed via Resend API: ${errMsg}`);
-          throw new Error(`Resend email delivery failed: ${errMsg}`);
+          const errMsg = errData?.message || errData?.error || response.statusText || 'Unknown error';
+          const errType = errData?.name || 'api_error';
+          logger.error(`[EMAIL_SERVICE] Resend response status: ${response.status}`);
+          logger.error(`[EMAIL_SERVICE] Resend response: [${errType}] ${errMsg}`);
+          throw new Error(`Resend API rejected delivery (${response.status}): ${errMsg}`);
         }
       } catch (fetchErr: any) {
         clearTimeout(timeoutId);
