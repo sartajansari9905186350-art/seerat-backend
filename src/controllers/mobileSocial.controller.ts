@@ -11,6 +11,24 @@ export class MobileSocialController {
       const userId = req.user!.id;
       const { postId } = req.params;
 
+      const postOwnerRes = await query('SELECT user_id FROM posts WHERE id = $1', [postId]);
+      if (postOwnerRes.rows.length === 0) {
+        ResponseUtil.error(res, 'NOT_FOUND', 'Post not found.', 404);
+        return;
+      }
+      const postOwnerId = postOwnerRes.rows[0].user_id;
+
+      if (postOwnerId !== userId) {
+        const blockCheck = await query(
+          'SELECT 1 FROM blocked_users WHERE (blocker_id = $1 AND blocked_id = $2) OR (blocker_id = $2 AND blocked_id = $1) LIMIT 1',
+          [userId, postOwnerId]
+        );
+        if (blockCheck.rows.length > 0) {
+          ResponseUtil.error(res, 'FORBIDDEN', 'Cannot interact with content from a blocked user.', 403);
+          return;
+        }
+      }
+
       let isLiked = false;
 
       await withTransaction(async (client) => {
@@ -32,14 +50,13 @@ export class MobileSocialController {
           isLiked = true;
 
           // Notify post owner
-          const postOwner = await client.query('SELECT user_id FROM posts WHERE id = $1', [postId]);
-          if (postOwner.rows.length > 0 && postOwner.rows[0].user_id !== userId) {
+          if (postOwnerId !== userId) {
             await client.query(
               `INSERT INTO notifications (id, user_id, actor_id, type, post_id, message)
                VALUES ($1, $2, $3, 'LIKE', $4, $5)`,
-              [uuidv4(), postOwner.rows[0].user_id, userId, postId, `${req.user!.name} liked your post.`]
+              [uuidv4(), postOwnerId, userId, postId, `${req.user!.name} liked your post.`]
             );
-            fcmService.sendToUser(postOwner.rows[0].user_id, {
+            fcmService.sendToUser(postOwnerId, {
               title: 'SEERAT',
               body: `${req.user!.name} liked your post.`,
               data: {
@@ -63,6 +80,24 @@ export class MobileSocialController {
     try {
       const userId = req.user!.id;
       const { reelId } = req.params;
+
+      const reelOwnerRes = await query('SELECT user_id FROM reels WHERE id = $1', [reelId]);
+      if (reelOwnerRes.rows.length === 0) {
+        ResponseUtil.error(res, 'NOT_FOUND', 'Reel not found.', 404);
+        return;
+      }
+      const reelOwnerId = reelOwnerRes.rows[0].user_id;
+
+      if (reelOwnerId !== userId) {
+        const blockCheck = await query(
+          'SELECT 1 FROM blocked_users WHERE (blocker_id = $1 AND blocked_id = $2) OR (blocker_id = $2 AND blocked_id = $1) LIMIT 1',
+          [userId, reelOwnerId]
+        );
+        if (blockCheck.rows.length > 0) {
+          ResponseUtil.error(res, 'FORBIDDEN', 'Cannot interact with content from a blocked user.', 403);
+          return;
+        }
+      }
 
       let isLiked = false;
 
@@ -187,6 +222,15 @@ export class MobileSocialController {
         return;
       }
 
+      const blockCheck = await query(
+        'SELECT 1 FROM blocked_users WHERE (blocker_id = $1 AND blocked_id = $2) OR (blocker_id = $2 AND blocked_id = $1) LIMIT 1',
+        [followerId, followingId]
+      );
+      if (blockCheck.rows.length > 0) {
+        ResponseUtil.error(res, 'FORBIDDEN', 'Cannot follow a blocked user.', 403);
+        return;
+      }
+
       let isFollowing = false;
 
       await withTransaction(async (client) => {
@@ -257,6 +301,11 @@ export class MobileSocialController {
         LEFT JOIN profiles prof ON u.id = prof.user_id
         LEFT JOIN comment_likes cl ON cl.comment_id = c.id AND cl.user_id = $2
         WHERE ${condition}
+          AND ($2 = '00000000-0000-0000-0000-000000000000' OR c.user_id NOT IN (
+            SELECT blocked_id FROM blocked_users WHERE blocker_id = $2
+            UNION
+            SELECT blocker_id FROM blocked_users WHERE blocked_id = $2
+          ))
         ORDER BY c.created_at ASC
       `;
 
@@ -325,6 +374,26 @@ export class MobileSocialController {
       if (!targetPostId && !targetReelId) {
         ResponseUtil.error(res, 'VALIDATION_ERROR', 'Comment text and post/reel ID are required.', 400);
         return;
+      }
+
+      let contentOwnerId: string | null = null;
+      if (targetPostId) {
+        const ownerRes = await query('SELECT user_id FROM posts WHERE id = $1', [targetPostId]);
+        if (ownerRes.rows.length > 0) contentOwnerId = ownerRes.rows[0].user_id;
+      } else if (targetReelId) {
+        const ownerRes = await query('SELECT user_id FROM reels WHERE id = $1', [targetReelId]);
+        if (ownerRes.rows.length > 0) contentOwnerId = ownerRes.rows[0].user_id;
+      }
+
+      if (contentOwnerId && contentOwnerId !== userId) {
+        const blockCheck = await query(
+          'SELECT 1 FROM blocked_users WHERE (blocker_id = $1 AND blocked_id = $2) OR (blocker_id = $2 AND blocked_id = $1) LIMIT 1',
+          [userId, contentOwnerId]
+        );
+        if (blockCheck.rows.length > 0) {
+          ResponseUtil.error(res, 'FORBIDDEN', 'Cannot comment on content from a blocked user.', 403);
+          return;
+        }
       }
 
       const commentId = uuidv4();
@@ -560,6 +629,18 @@ export class MobileSocialController {
       if (commentCheck.rows.length === 0) {
         ResponseUtil.error(res, 'NOT_FOUND', 'Comment not found.', 404);
         return;
+      }
+
+      const commentAuthorId = commentCheck.rows[0].user_id;
+      if (commentAuthorId !== userId) {
+        const blockCheck = await query(
+          'SELECT 1 FROM blocked_users WHERE (blocker_id = $1 AND blocked_id = $2) OR (blocker_id = $2 AND blocked_id = $1) LIMIT 1',
+          [userId, commentAuthorId]
+        );
+        if (blockCheck.rows.length > 0) {
+          ResponseUtil.error(res, 'FORBIDDEN', 'Cannot interact with content from a blocked user.', 403);
+          return;
+        }
       }
 
       let isLiked = false;

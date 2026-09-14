@@ -71,6 +71,10 @@ mobileRouter.get('/saves', authenticateUser, (req, res, next) => mobileSocialCon
 mobileRouter.post('/users/:userId/follow', authenticateUser, (req, res, next) => mobileSocialController.toggleFollow(req, res, next));
 
 // Profiles & Users
+mobileRouter.get('/users/blocked', authenticateUser, (req, res, next) => mobileUserController.getBlockedUsers(req, res, next));
+mobileRouter.post('/users/:userId/block', authenticateUser, (req, res, next) => mobileUserController.blockUser(req, res, next));
+mobileRouter.post('/users/:userId/unblock', authenticateUser, (req, res, next) => mobileUserController.unblockUser(req, res, next));
+mobileRouter.delete('/users/:userId/block', authenticateUser, (req, res, next) => mobileUserController.unblockUser(req, res, next));
 mobileRouter.get('/users/profile/:userId', optionalUserAuth, (req, res, next) => mobileUserController.getProfile(req, res, next));
 mobileRouter.put('/users/profile', authenticateUser, (req, res, next) => mobileUserController.updateProfile(req, res, next));
 mobileRouter.post('/users/profile/photo', authenticateUser, handlePhotoUpload, (req, res, next) => mobileUserController.uploadPhoto(req, res, next));

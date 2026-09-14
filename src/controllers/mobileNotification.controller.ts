@@ -16,6 +16,11 @@ export class MobileNotificationController {
         LEFT JOIN users u ON n.actor_id = u.id
         LEFT JOIN profiles prof ON u.id = prof.user_id
         WHERE n.user_id = $1
+          AND (n.actor_id IS NULL OR n.actor_id NOT IN (
+            SELECT blocked_id FROM blocked_users WHERE blocker_id = $1
+            UNION
+            SELECT blocker_id FROM blocked_users WHERE blocked_id = $1
+          ))
         ORDER BY n.created_at DESC
         LIMIT 50
       `;

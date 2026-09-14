@@ -3,6 +3,7 @@ import { env } from './config/env';
 import { testConnection, query } from './config/database';
 import { logger } from './utils/logger';
 import { runMigration } from '../database/migrate';
+import { ensurePostgresRunning } from '../database/startDb';
 import bcrypt from 'bcryptjs';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -84,10 +85,20 @@ const checkAndInitSchema = async (): Promise<void> => {
         ALTER TABLE comments ADD COLUMN IF NOT EXISTS parent_comment_id UUID REFERENCES comments(id) ON DELETE CASCADE;
         ALTER TABLE comments ADD COLUMN IF NOT EXISTS likes_count INT DEFAULT 0;
         CREATE INDEX IF NOT EXISTS idx_comments_parent_id ON comments(parent_comment_id);
+
+        CREATE TABLE IF NOT EXISTS blocked_users (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            blocker_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            blocked_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+            CONSTRAINT uq_blocked_users UNIQUE (blocker_id, blocked_id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_blocked_users_blocker ON blocked_users(blocker_id);
+        CREATE INDEX IF NOT EXISTS idx_blocked_users_blocked ON blocked_users(blocked_id);
       `);
-      logger.info('not_interested_reels, user_warnings, and comment_likes tables verified.');
+      logger.info('not_interested_reels, user_warnings, comment_likes, and blocked_users tables verified.');
     } catch (tblErr: any) {
-      logger.warn('Could not ensure not_interested_reels / user_warnings / comment_likes tables:', tblErr.message);
+      logger.warn('Could not ensure not_interested_reels / user_warnings / comment_likes / blocked_users tables:', tblErr.message);
     }
 
     // Ensure profile photo columns exist across users, profiles, and admin_users
@@ -279,6 +290,9 @@ const checkAndInitSchema = async (): Promise<void> => {
 
 const startServer = async (): Promise<void> => {
   try {
+    // Ensure PostgreSQL is running
+    await ensurePostgresRunning();
+
     // Verify PostgreSQL connectivity
     await testConnection();
 

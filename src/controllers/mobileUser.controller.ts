@@ -1,5 +1,6 @@
 import { Response, NextFunction } from 'express';
-import { query } from '../config/database';
+import { query, withTransaction } from '../config/database';
+import { v4 as uuidv4 } from 'uuid';
 import { ResponseUtil } from '../utils/response';
 import { AuthenticatedUserRequest } from '../middleware/userAuth.middleware';
 import { supabaseStorage } from '../services/supabaseStorage.service';
@@ -13,10 +14,14 @@ export class MobileUserController {
       const userRes = await query(
         `SELECT u.id, u.name, u.username, u.email, u.phone, u.is_verified, u.is_private, u.status,
                 p.bio, p.profile_photo, p.followers_count, p.following_count, p.posts_count, p.reels_count,
-                (f.id IS NOT NULL) as is_following
+                (f.id IS NOT NULL) as is_following,
+                (b.id IS NOT NULL) as is_blocked,
+                (b_rev.id IS NOT NULL) as is_blocked_by
          FROM users u
          LEFT JOIN profiles p ON u.id = p.user_id
          LEFT JOIN follows f ON f.follower_id = $2 AND f.following_id = u.id
+         LEFT JOIN blocked_users b ON b.blocker_id = $2 AND b.blocked_id = u.id
+         LEFT JOIN blocked_users b_rev ON b_rev.blocker_id = u.id AND b_rev.blocked_id = $2
          WHERE u.id = $1`,
         [userId, currentUserId]
       );
@@ -42,7 +47,9 @@ export class MobileUserController {
         following_count: parseInt(u.following_count || '0', 10),
         posts_count: parseInt(u.posts_count || '0', 10),
         reels_count: parseInt(u.reels_count || '0', 10),
-        is_following: u.is_following || false
+        is_following: u.is_following || false,
+        is_blocked: u.is_blocked || false,
+        is_blocked_by: u.is_blocked_by || false
       };
 
       ResponseUtil.success(res, profile);
@@ -131,6 +138,18 @@ export class MobileUserController {
         ResponseUtil.error(res, 'USER_NOT_FOUND', 'User does not exist.', 404);
         return;
       }
+
+      if (!isOwner && currentUserId !== '00000000-0000-0000-0000-000000000000') {
+        const blockCheck = await query(
+          'SELECT 1 FROM blocked_users WHERE (blocker_id = $1 AND blocked_id = $2) OR (blocker_id = $2 AND blocked_id = $1) LIMIT 1',
+          [currentUserId, userId]
+        );
+        if (blockCheck.rows.length > 0) {
+          ResponseUtil.success(res, []);
+          return;
+        }
+      }
+
       const isTargetPrivate = targetUserCheck.rows[0].is_private || false;
       if (isTargetPrivate && !isOwner) {
         const followCheck = await query("SELECT id FROM follows WHERE follower_id = $1 AND following_id = $2 AND status = 'ACCEPTED'", [currentUserId, userId]);
@@ -220,6 +239,18 @@ export class MobileUserController {
         ResponseUtil.error(res, 'USER_NOT_FOUND', 'User does not exist.', 404);
         return;
       }
+
+      if (!isOwner && currentUserId !== '00000000-0000-0000-0000-000000000000') {
+        const blockCheck = await query(
+          'SELECT 1 FROM blocked_users WHERE (blocker_id = $1 AND blocked_id = $2) OR (blocker_id = $2 AND blocked_id = $1) LIMIT 1',
+          [currentUserId, userId]
+        );
+        if (blockCheck.rows.length > 0) {
+          ResponseUtil.success(res, []);
+          return;
+        }
+      }
+
       const isTargetPrivate = targetUserCheck.rows[0].is_private || false;
       if (isTargetPrivate && !isOwner) {
         const followCheck = await query("SELECT id FROM follows WHERE follower_id = $1 AND following_id = $2 AND status = 'ACCEPTED'", [currentUserId, userId]);
@@ -302,6 +333,17 @@ export class MobileUserController {
       const { userId } = req.params;
       const currentUserId = req.user?.id || '00000000-0000-0000-0000-000000000000';
 
+      if (currentUserId !== userId && currentUserId !== '00000000-0000-0000-0000-000000000000') {
+        const blockCheck = await query(
+          'SELECT 1 FROM blocked_users WHERE (blocker_id = $1 AND blocked_id = $2) OR (blocker_id = $2 AND blocked_id = $1) LIMIT 1',
+          [currentUserId, userId]
+        );
+        if (blockCheck.rows.length > 0) {
+          ResponseUtil.success(res, []);
+          return;
+        }
+      }
+
       const sql = `
         SELECT u.id, u.name, u.username, u.email, u.phone, u.is_verified, u.is_private,
                p.bio, p.profile_photo, p.followers_count, p.following_count,
@@ -310,6 +352,11 @@ export class MobileUserController {
         JOIN users u ON f.follower_id = u.id
         LEFT JOIN profiles p ON u.id = p.user_id
         WHERE f.following_id = $1
+          AND ($2 = '00000000-0000-0000-0000-000000000000' OR u.id NOT IN (
+            SELECT blocked_id FROM blocked_users WHERE blocker_id = $2
+            UNION
+            SELECT blocker_id FROM blocked_users WHERE blocked_id = $2
+          ))
       `;
 
       const result = await query(sql, [userId, currentUserId]);
@@ -338,6 +385,17 @@ export class MobileUserController {
       const { userId } = req.params;
       const currentUserId = req.user?.id || '00000000-0000-0000-0000-000000000000';
 
+      if (currentUserId !== userId && currentUserId !== '00000000-0000-0000-0000-000000000000') {
+        const blockCheck = await query(
+          'SELECT 1 FROM blocked_users WHERE (blocker_id = $1 AND blocked_id = $2) OR (blocker_id = $2 AND blocked_id = $1) LIMIT 1',
+          [currentUserId, userId]
+        );
+        if (blockCheck.rows.length > 0) {
+          ResponseUtil.success(res, []);
+          return;
+        }
+      }
+
       const sql = `
         SELECT u.id, u.name, u.username, u.email, u.phone, u.is_verified, u.is_private,
                p.bio, p.profile_photo, p.followers_count, p.following_count,
@@ -346,6 +404,11 @@ export class MobileUserController {
         JOIN users u ON f.following_id = u.id
         LEFT JOIN profiles p ON u.id = p.user_id
         WHERE f.follower_id = $1
+          AND ($2 = '00000000-0000-0000-0000-000000000000' OR u.id NOT IN (
+            SELECT blocked_id FROM blocked_users WHERE blocker_id = $2
+            UNION
+            SELECT blocker_id FROM blocked_users WHERE blocked_id = $2
+          ))
       `;
 
       const result = await query(sql, [userId, currentUserId]);
@@ -486,6 +549,11 @@ export class MobileUserController {
            FROM users u
            LEFT JOIN profiles p ON u.id = p.user_id
            WHERE (u.username ILIKE $1 OR u.name ILIKE $1) AND u.status = 'ACTIVE'
+             AND ($2 = '00000000-0000-0000-0000-000000000000' OR u.id NOT IN (
+               SELECT blocked_id FROM blocked_users WHERE blocker_id = $2
+               UNION
+               SELECT blocker_id FROM blocked_users WHERE blocked_id = $2
+             ))
            LIMIT 30`,
           [pattern, currentUserId]
         );
@@ -529,6 +597,11 @@ export class MobileUserController {
            LEFT JOIN follows f ON f.follower_id = $2 AND f.following_id = r.user_id
            WHERE r.status = 'APPROVED'
              AND (u.is_private = FALSE OR r.user_id = $2 OR f.id IS NOT NULL)
+             AND ($2 = '00000000-0000-0000-0000-000000000000' OR r.user_id NOT IN (
+               SELECT blocked_id FROM blocked_users WHERE blocker_id = $2
+               UNION
+               SELECT blocker_id FROM blocked_users WHERE blocked_id = $2
+             ))
              AND (r.caption ILIKE $1 OR r.reference_source ILIKE $1 OR r.audio_title ILIKE $1 OR c.name ILIKE $1 OR u.name ILIKE $1 OR u.username ILIKE $1)
            ORDER BY r.created_at DESC
            LIMIT 30`,
@@ -593,6 +666,11 @@ export class MobileUserController {
            LEFT JOIN follows f ON f.follower_id = $2 AND f.following_id = p.user_id
            WHERE p.status = 'APPROVED'
              AND (u.is_private = FALSE OR p.user_id = $2 OR f.id IS NOT NULL)
+             AND ($2 = '00000000-0000-0000-0000-000000000000' OR p.user_id NOT IN (
+               SELECT blocked_id FROM blocked_users WHERE blocker_id = $2
+               UNION
+               SELECT blocker_id FROM blocked_users WHERE blocked_id = $2
+             ))
              AND (p.text_content ILIKE $1 OR p.arabic_text ILIKE $1 OR p.translation_text ILIKE $1 OR p.reference_source ILIKE $1 OR c.name ILIKE $1 OR u.name ILIKE $1 OR u.username ILIKE $1)
            ORDER BY p.created_at DESC
            LIMIT 30`,
@@ -637,6 +715,125 @@ export class MobileUserController {
       }
 
       ResponseUtil.success(res, { users, reels, posts });
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  async blockUser(req: AuthenticatedUserRequest, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const blockerId = req.user!.id;
+      const { userId: blockedId } = req.params;
+
+      if (!blockedId) {
+        ResponseUtil.error(res, 'VALIDATION_ERROR', 'User ID is required.', 400);
+        return;
+      }
+
+      if (blockerId === blockedId) {
+        ResponseUtil.error(res, 'BAD_REQUEST', 'You cannot block yourself.', 400);
+        return;
+      }
+
+      // Check if target user exists
+      const targetUser = await query('SELECT id, username FROM users WHERE id = $1', [blockedId]);
+      if (targetUser.rows.length === 0) {
+        ResponseUtil.error(res, 'USER_NOT_FOUND', 'User does not exist.', 404);
+        return;
+      }
+
+      await withTransaction(async (client) => {
+        // 1. Insert into blocked_users
+        await client.query(
+          `INSERT INTO blocked_users (id, blocker_id, blocked_id)
+           VALUES ($1, $2, $3)
+           ON CONFLICT (blocker_id, blocked_id) DO NOTHING`,
+          [uuidv4(), blockerId, blockedId]
+        );
+
+        // 2. Remove follow relationships in BOTH directions
+        const follow1 = await client.query(
+          'DELETE FROM follows WHERE follower_id = $1 AND following_id = $2 RETURNING id',
+          [blockerId, blockedId]
+        );
+        if (follow1.rows.length > 0) {
+          await client.query('UPDATE profiles SET following_count = GREATEST(following_count - 1, 0) WHERE user_id = $1', [blockerId]);
+          await client.query('UPDATE profiles SET followers_count = GREATEST(followers_count - 1, 0) WHERE user_id = $1', [blockedId]);
+        }
+
+        const follow2 = await client.query(
+          'DELETE FROM follows WHERE follower_id = $1 AND following_id = $2 RETURNING id',
+          [blockedId, blockerId]
+        );
+        if (follow2.rows.length > 0) {
+          await client.query('UPDATE profiles SET following_count = GREATEST(following_count - 1, 0) WHERE user_id = $1', [blockedId]);
+          await client.query('UPDATE profiles SET followers_count = GREATEST(followers_count - 1, 0) WHERE user_id = $1', [blockerId]);
+        }
+      });
+
+      ResponseUtil.success(res, true, 'User blocked successfully.');
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  async unblockUser(req: AuthenticatedUserRequest, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const blockerId = req.user!.id;
+      const { userId: blockedId } = req.params;
+
+      if (!blockedId) {
+        ResponseUtil.error(res, 'VALIDATION_ERROR', 'User ID is required.', 400);
+        return;
+      }
+
+      await query(
+        'DELETE FROM blocked_users WHERE blocker_id = $1 AND blocked_id = $2',
+        [blockerId, blockedId]
+      );
+
+      ResponseUtil.success(res, true, 'User unblocked successfully.');
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  async getBlockedUsers(req: AuthenticatedUserRequest, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const currentUserId = req.user!.id;
+
+      const sql = `
+        SELECT u.id, u.name, u.username, u.email, u.phone, u.is_verified, u.is_private,
+               p.bio, p.profile_photo, p.followers_count, p.following_count, p.posts_count, p.reels_count,
+               b.created_at as blocked_at
+        FROM blocked_users b
+        JOIN users u ON b.blocked_id = u.id
+        LEFT JOIN profiles p ON u.id = p.user_id
+        WHERE b.blocker_id = $1
+        ORDER BY b.created_at DESC
+      `;
+
+      const result = await query(sql, [currentUserId]);
+
+      const blockedUsers = result.rows.map(u => ({
+        id: u.id,
+        name: u.name,
+        username: u.username,
+        email: u.email,
+        phone: u.phone,
+        bio: u.bio || '',
+        profile_photo: u.profile_photo || '',
+        is_verified: u.is_verified || false,
+        is_private: u.is_private || false,
+        followers_count: parseInt(u.followers_count || '0', 10),
+        following_count: parseInt(u.following_count || '0', 10),
+        posts_count: parseInt(u.posts_count || '0', 10),
+        reels_count: parseInt(u.reels_count || '0', 10),
+        is_following: false,
+        blocked_at: u.blocked_at
+      }));
+
+      ResponseUtil.success(res, blockedUsers);
     } catch (err) {
       next(err);
     }

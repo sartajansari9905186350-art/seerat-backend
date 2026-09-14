@@ -87,6 +87,11 @@ export class MobileReelController {
         WHERE r.status = 'APPROVED'
           AND (u.is_private = FALSE OR r.user_id = $1 OR f.id IS NOT NULL)
           AND ($1 = '00000000-0000-0000-0000-000000000000' OR r.id NOT IN (SELECT reel_id FROM not_interested_reels WHERE user_id = $1))
+          AND ($1 = '00000000-0000-0000-0000-000000000000' OR r.user_id NOT IN (
+            SELECT blocked_id FROM blocked_users WHERE blocker_id = $1
+            UNION
+            SELECT blocker_id FROM blocked_users WHERE blocked_id = $1
+          ))
         ORDER BY r.created_at DESC
         LIMIT $2 OFFSET $3
       `;
@@ -135,10 +140,10 @@ export class MobileReelController {
         shares_count: parseInt(r.shares_count || '0', 10),
         saves_count: parseInt(r.saves_count || '0', 10),
         views_count: parseInt(r.views_count || '0', 10),
+        created_at: r.created_at,
         is_liked: r.is_liked || false,
         is_saved: r.is_saved || false,
-        is_following: r.is_following || false,
-        created_at: new Date(r.created_at).toLocaleDateString()
+        is_following: r.is_following || false
       }));
 
       ResponseUtil.success(res, formattedReels);
@@ -176,6 +181,11 @@ export class MobileReelController {
         LEFT JOIN likes l ON l.reel_id = r.id AND l.user_id = $1
         LEFT JOIN saves s ON s.reel_id = r.id AND s.user_id = $1
         WHERE r.status = 'APPROVED'
+          AND r.user_id NOT IN (
+            SELECT blocked_id FROM blocked_users WHERE blocker_id = $1
+            UNION
+            SELECT blocker_id FROM blocked_users WHERE blocked_id = $1
+          )
         ORDER BY r.created_at DESC
         LIMIT $2 OFFSET $3
       `;

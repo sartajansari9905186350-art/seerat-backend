@@ -40,6 +40,18 @@ export const runMigration = async (): Promise<void> => {
       await client.query(`ALTER TABLE reels ADD COLUMN IF NOT EXISTS ai_analyzed_at TIMESTAMP WITH TIME ZONE;`);
       await client.query(`ALTER TABLE reels ADD COLUMN IF NOT EXISTS ai_metadata JSONB DEFAULT '{}'::jsonb;`);
 
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS blocked_users (
+          id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+          blocker_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          blocked_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+          CONSTRAINT uq_blocked_users UNIQUE (blocker_id, blocked_id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_blocked_users_blocker ON blocked_users(blocker_id);
+        CREATE INDEX IF NOT EXISTS idx_blocked_users_blocked ON blocked_users(blocked_id);
+      `);
+
       await client.query('COMMIT');
       logger.info('Database schema migration completed successfully.');
     } catch (err) {

@@ -24,6 +24,13 @@ export class MobileFeedController {
       const currentUserIdParamIndex = params.length;
 
       conditions.push(`(u.is_private = FALSE OR p.user_id = $${currentUserIdParamIndex} OR f.id IS NOT NULL)`);
+      if (currentUserId !== '00000000-0000-0000-0000-000000000000') {
+        conditions.push(`p.user_id NOT IN (
+          SELECT blocked_id FROM blocked_users WHERE blocker_id = $${currentUserIdParamIndex}
+          UNION
+          SELECT blocker_id FROM blocked_users WHERE blocked_id = $${currentUserIdParamIndex}
+        )`);
+      }
 
       const whereClause = `WHERE ${conditions.join(' AND ')}`;
 
@@ -128,6 +135,11 @@ export class MobileFeedController {
         LEFT JOIN likes l ON l.post_id = p.id AND l.user_id = $1
         LEFT JOIN saves s ON s.post_id = p.id AND s.user_id = $1
         WHERE p.status = 'APPROVED'
+          AND p.user_id NOT IN (
+            SELECT blocked_id FROM blocked_users WHERE blocker_id = $1
+            UNION
+            SELECT blocker_id FROM blocked_users WHERE blocked_id = $1
+          )
         ORDER BY p.created_at DESC
         LIMIT $2 OFFSET $3
       `;
