@@ -892,6 +892,450 @@ app.get('/u/:username', async (req, res) => {
   }
 });
 
+// ==========================================
+// PUBLIC WEB: SEERAT POST LINK WITH OPENGRAPH
+// ==========================================
+app.get(['/p/:postId', '/api/posts/:postId/share'], async (req, res) => {
+  try {
+    const postId = (req.params.postId || '').trim();
+
+    const result = await query(
+      `SELECT p.id, p.content_type, p.text_content, p.arabic_text, p.translation_text, p.reference_source,
+              COALESCE(p.likes_count, 0) as likes_count,
+              COALESCE(p.comments_count, 0) as comments_count,
+              COALESCE(p.shares_count, 0) as shares_count,
+              p.created_at,
+              u.id as creator_id, u.name as creator_name, u.username as creator_username,
+              prof.profile_photo as creator_photo,
+              c.name as category_name,
+              m.url as media_url, m.thumbnail_url
+       FROM posts p
+       JOIN users u ON p.user_id = u.id
+       LEFT JOIN profiles prof ON u.id = prof.user_id
+       LEFT JOIN categories c ON p.category_id = c.id
+       LEFT JOIN media m ON p.media_id = m.id
+       WHERE p.id = $1`,
+      [postId]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).send(`<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Post Not Found – SEERAT</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+      background: #f8fafc; color: #0f172a; min-height: 100vh;
+      display: flex; align-items: center; justify-content: center; padding: 20px; text-align: center;
+    }
+    .card {
+      background: #ffffff; border-radius: 20px; box-shadow: 0 4px 20px rgba(0,0,0,0.06);
+      padding: 40px 28px; max-width: 380px; width: 100%; border: 1px solid #e2e8f0;
+    }
+    h1 { font-size: 20px; color: #dc2626; margin-bottom: 8px; font-weight: 700; }
+    p { color: #64748b; font-size: 14px; margin-bottom: 24px; line-height: 1.5; }
+    .btn { display: inline-block; padding: 12px 24px; background: #047857; color: #fff; text-decoration: none; border-radius: 10px; font-weight: 600; font-size: 14px; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>Post Not Found</h1>
+    <p>This Islamic post is no longer available or does not exist.</p>
+    <a href="https://seerat-backend.onrender.com" class="btn">Return to SEERAT</a>
+  </div>
+</body>
+</html>`);
+    }
+
+    const p = result.rows[0];
+    const rawTitle = (p.arabic_text && p.arabic_text.trim()) ? p.arabic_text.trim() : '';
+    const rawCaption = (p.text_content && p.text_content.trim())
+      ? p.text_content.trim()
+      : ((p.translation_text && p.translation_text.trim()) ? p.translation_text.trim() : '');
+    const rawCategory = (p.category_name && p.category_name.trim()) ? p.category_name.trim() : 'Islamic';
+    const rawReference = (p.reference_source && p.reference_source.trim()) ? p.reference_source.trim() : '';
+    const rawCreatorName = (p.creator_name && p.creator_name.trim()) ? p.creator_name.trim() : (p.creator_username || 'SEERAT Creator');
+    const rawCreatorUsername = p.creator_username || 'seerat';
+    const creatorPhotoUrl = resolvePublicPhotoUrl(p.creator_photo);
+    const mediaPhotoUrl = resolvePublicPhotoUrl(p.thumbnail_url || p.media_url);
+
+    const publicPostUrl = `https://seerat-backend.onrender.com/p/${encodeURIComponent(p.id)}`;
+    const deepLink = `seerat://post/${encodeURIComponent(p.id)}`;
+
+    const escTitle = escapeHtml(rawTitle);
+    const escCaption = escapeHtml(rawCaption);
+    const escCategory = escapeHtml(rawCategory);
+    const escReference = escapeHtml(rawReference);
+    const escCreatorName = escapeHtml(rawCreatorName);
+    const escCreatorUsername = escapeHtml(rawCreatorUsername);
+    const escCreatorPhoto = escapeHtml(creatorPhotoUrl);
+    const escMediaPhoto = escapeHtml(mediaPhotoUrl);
+    const escPublicUrl = escapeHtml(publicPostUrl);
+    const escDeepLink = escapeHtml(deepLink);
+
+    const ogTitle = rawTitle ? `${escTitle} – SEERAT` : `Post by ${escCreatorName} (@${escCreatorUsername}) – SEERAT`;
+    const ogDescription = escCaption ? escCaption.slice(0, 200) : `Authentic Islamic reminder shared from SEERAT.`;
+    const ogImage = escMediaPhoto;
+
+    const hasMedia = Boolean(p.media_url || p.thumbnail_url);
+    const isVideo = p.content_type === 'VIDEO';
+
+    let mediaHtml = '';
+    if (hasMedia) {
+      if (isVideo) {
+        const publicVideoUrl = resolvePublicPhotoUrl(p.media_url);
+        const escVideoUrl = escapeHtml(publicVideoUrl);
+        mediaHtml = `<div class="media-container"><video controls poster="${escMediaPhoto}" class="post-video"><source src="${escVideoUrl}" type="video/mp4"></video></div>`;
+      } else {
+        mediaHtml = `<div class="media-container"><img src="${escMediaPhoto}" class="post-image" alt="SEERAT Post" onerror="this.onerror=null;this.src='https://seerat-backend.onrender.com/assets/logo.png';"></div>`;
+      }
+    }
+
+    let html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${ogTitle}</title>
+
+  <!-- OpenGraph Meta Tags for Rich Social Previews (WhatsApp, Telegram, Facebook, Twitter) -->
+  <meta property="og:site_name" content="SEERAT">
+  <meta property="og:type" content="article">
+  <meta property="og:title" content="${ogTitle}">
+  <meta property="og:description" content="${ogDescription}">
+  <meta property="og:image" content="${ogImage}">
+  <meta property="og:url" content="${escPublicUrl}">
+
+  <!-- Twitter / X Card Meta Tags -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="${ogTitle}">
+  <meta name="twitter:description" content="${ogDescription}">
+  <meta name="twitter:image" content="${ogImage}">
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Amiri:wght@700&display=swap" rel="stylesheet">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+      background: #f8fafc; color: #0f172a; min-height: 100vh;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      padding: 24px 16px;
+    }
+    .card {
+      background: #ffffff; width: 100%; max-width: 440px; border-radius: 24px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.05); border: 1px solid #e2e8f0;
+      padding: 24px; overflow: hidden;
+    }
+    .brand-bar {
+      display: flex; align-items: center; gap: 8px; margin-bottom: 18px; padding-bottom: 12px;
+      border-bottom: 1px solid #f1f5f9;
+    }
+    .brand-logo { width: 26px; height: 26px; border-radius: 6px; }
+    .brand-name { font-weight: 800; font-size: 14px; color: #047857; letter-spacing: 0.5px; }
+    .creator-row { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
+    .creator-avatar { width: 44px; height: 44px; border-radius: 50%; object-fit: cover; border: 2px solid #047857; }
+    .creator-meta { display: flex; flex-direction: column; }
+    .creator-name { font-weight: 700; font-size: 15px; color: #0f172a; }
+    .creator-username { font-size: 13px; font-weight: 600; color: #047857; }
+    .content-title {
+      font-family: 'Amiri', serif; font-size: 20px; font-weight: 700; color: #065f46;
+      margin-bottom: 12px; line-height: 1.5; direction: rtl; text-align: right;
+    }
+    .content-caption {
+      font-size: 15px; line-height: 1.6; color: #334155; margin-bottom: 16px;
+      white-space: pre-wrap; word-break: break-word;
+    }
+    .media-container { margin: 14px 0; border-radius: 16px; overflow: hidden; background: #000; }
+    .post-image { width: 100%; max-height: 380px; object-fit: cover; display: block; }
+    .post-video { width: 100%; max-height: 380px; display: block; background: #000; }
+    .badges-row { display: flex; flex-wrap: wrap; gap: 8px; margin: 16px 0; }
+    .badge {
+      font-size: 12px; font-weight: 600; padding: 5px 12px; border-radius: 8px;
+    }
+    .badge-category { background: #ecfdf5; color: #047857; border: 1px solid #a7f3d0; }
+    .badge-ref { background: #f1f5f9; color: #475569; border: 1px solid #e2e8f0; }
+    .btn {
+      display: block; width: 100%; padding: 14px 20px; background: #047857;
+      color: #ffffff !important; text-decoration: none; border-radius: 14px;
+      font-size: 15px; font-weight: 700; text-align: center;
+      box-shadow: 0 4px 12px rgba(4, 120, 87, 0.25); margin-top: 12px;
+    }
+    .btn:hover { background: #065f46; }
+    .footer-note {
+      margin-top: 18px; font-size: 12px; font-weight: 600; color: #94a3b8;
+      text-align: center; letter-spacing: 0.3px;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="brand-bar">
+      <img src="https://seerat-backend.onrender.com/assets/logo.png" class="brand-logo" alt="SEERAT">
+      <span class="brand-name">SEERAT</span>
+    </div>
+
+    <div class="creator-row">
+      <img src="${escCreatorPhoto}" class="creator-avatar" alt="${escCreatorName}" onerror="this.onerror=null;this.src='https://seerat-backend.onrender.com/assets/logo.png';">
+      <div class="creator-meta">
+        <span class="creator-name">${escCreatorName}</span>
+        <span class="creator-username">@${escCreatorUsername}</span>
+      </div>
+    </div>
+
+    ${rawTitle ? `<div class="content-title">${escTitle}</div>` : ''}
+    ${rawCaption ? `<div class="content-caption">${escCaption}</div>` : ''}
+    ${mediaHtml}
+
+    <div class="badges-row">
+      <span class="badge badge-category">Category: ${escCategory}</span>
+      ${rawReference ? `<span class="badge badge-ref">Reference: ${escReference}</span>` : ''}
+    </div>
+
+    <a href="${escDeepLink}" class="btn">Open in SEERAT App</a>
+    <div class="footer-note">Shared from SEERAT &bull; Authentic Islamic Platform</div>
+  </div>
+</body>
+</html>`;
+
+    if (html.includes('${')) {
+      logger.error('CRITICAL: Template expression detected in rendered HTML!');
+      html = html.replace(/\$\{.*?\}/g, '');
+    }
+
+    res.set('Content-Type', 'text/html; charset=utf-8');
+    res.send(html);
+  } catch (err: any) {
+    logger.error('Error loading post share page:', err);
+    res.status(500).send('<!DOCTYPE html><html><body><h3>Unable to load post at this time. Please try again later.</h3></body></html>');
+  }
+});
+
+// ==========================================
+// PUBLIC WEB: SEERAT REEL LINK WITH OPENGRAPH
+// ==========================================
+app.get(['/r/:reelId', '/api/reels/:reelId/share'], async (req, res) => {
+  try {
+    const reelId = (req.params.reelId || '').trim();
+
+    const result = await query(
+      `SELECT r.id, r.caption, r.reference_source, r.audio_title, r.audio_artist,
+              COALESCE(r.likes_count, 0) as likes_count,
+              COALESCE(r.comments_count, 0) as comments_count,
+              COALESCE(r.shares_count, 0) as shares_count,
+              COALESCE(r.views_count, 0) as views_count,
+              r.created_at,
+              u.id as creator_id, u.name as creator_name, u.username as creator_username,
+              prof.profile_photo as creator_photo,
+              c.name as category_name,
+              m.url as video_url, m.thumbnail_url
+       FROM reels r
+       JOIN users u ON r.user_id = u.id
+       LEFT JOIN profiles prof ON u.id = prof.user_id
+       LEFT JOIN categories c ON r.category_id = c.id
+       LEFT JOIN media m ON r.media_id = m.id
+       WHERE r.id = $1`,
+      [reelId]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).send(`<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Reel Not Found – SEERAT</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+      background: #f8fafc; color: #0f172a; min-height: 100vh;
+      display: flex; align-items: center; justify-content: center; padding: 20px; text-align: center;
+    }
+    .card {
+      background: #ffffff; border-radius: 20px; box-shadow: 0 4px 20px rgba(0,0,0,0.06);
+      padding: 40px 28px; max-width: 380px; width: 100%; border: 1px solid #e2e8f0;
+    }
+    h1 { font-size: 20px; color: #dc2626; margin-bottom: 8px; font-weight: 700; }
+    p { color: #64748b; font-size: 14px; margin-bottom: 24px; line-height: 1.5; }
+    .btn { display: inline-block; padding: 12px 24px; background: #047857; color: #fff; text-decoration: none; border-radius: 10px; font-weight: 600; font-size: 14px; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>Reel Not Found</h1>
+    <p>This Islamic reel is no longer available or does not exist.</p>
+    <a href="https://seerat-backend.onrender.com" class="btn">Return to SEERAT</a>
+  </div>
+</body>
+</html>`);
+    }
+
+    const r = result.rows[0];
+    const rawTitle = (r.audio_title && r.audio_title.trim() && r.audio_title !== 'Original Islamic Audio')
+      ? r.audio_title.trim()
+      : '';
+    const rawCaption = (r.caption && r.caption.trim()) ? r.caption.trim() : '';
+    const rawCategory = (r.category_name && r.category_name.trim()) ? r.category_name.trim() : 'Islamic';
+    const rawReference = (r.reference_source && r.reference_source.trim()) ? r.reference_source.trim() : '';
+    const rawCreatorName = (r.creator_name && r.creator_name.trim()) ? r.creator_name.trim() : (r.creator_username || 'SEERAT Creator');
+    const rawCreatorUsername = r.creator_username || 'seerat';
+    const creatorPhotoUrl = resolvePublicPhotoUrl(r.creator_photo);
+    const posterUrl = resolvePublicPhotoUrl(r.thumbnail_url);
+    const videoUrl = resolvePublicPhotoUrl(r.video_url);
+
+    const publicReelUrl = `https://seerat-backend.onrender.com/r/${encodeURIComponent(r.id)}`;
+    const deepLink = `seerat://reel/${encodeURIComponent(r.id)}`;
+
+    const escTitle = escapeHtml(rawTitle);
+    const escCaption = escapeHtml(rawCaption);
+    const escCategory = escapeHtml(rawCategory);
+    const escReference = escapeHtml(rawReference);
+    const escCreatorName = escapeHtml(rawCreatorName);
+    const escCreatorUsername = escapeHtml(rawCreatorUsername);
+    const escCreatorPhoto = escapeHtml(creatorPhotoUrl);
+    const escPosterUrl = escapeHtml(posterUrl);
+    const escVideoUrl = escapeHtml(videoUrl);
+    const escPublicUrl = escapeHtml(publicReelUrl);
+    const escDeepLink = escapeHtml(deepLink);
+
+    const ogTitle = rawTitle ? `${escTitle} – Reel by ${escCreatorName}` : `Reel by ${escCreatorName} (@${escCreatorUsername}) – SEERAT`;
+    const ogDescription = escCaption ? escCaption.slice(0, 200) : `Watch authentic Islamic reel on SEERAT.`;
+    const ogImage = escPosterUrl;
+
+    let html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${ogTitle}</title>
+
+  <!-- OpenGraph Meta Tags for Rich Social Previews (WhatsApp, Telegram, Facebook, Twitter) -->
+  <meta property="og:site_name" content="SEERAT">
+  <meta property="og:type" content="video.other">
+  <meta property="og:title" content="${ogTitle}">
+  <meta property="og:description" content="${ogDescription}">
+  <meta property="og:image" content="${ogImage}">
+  <meta property="og:url" content="${escPublicUrl}">
+
+  <!-- Twitter / X Card Meta Tags -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="${ogTitle}">
+  <meta name="twitter:description" content="${ogDescription}">
+  <meta name="twitter:image" content="${ogImage}">
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+      background: #0f172a; color: #f8fafc; min-height: 100vh;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      padding: 24px 16px;
+    }
+    .card {
+      background: #1e293b; width: 100%; max-width: 440px; border-radius: 24px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4); border: 1px solid #334155;
+      padding: 24px; overflow: hidden;
+    }
+    .brand-bar {
+      display: flex; align-items: center; gap: 8px; margin-bottom: 18px; padding-bottom: 12px;
+      border-bottom: 1px solid #334155;
+    }
+    .brand-logo { width: 26px; height: 26px; border-radius: 6px; }
+    .brand-name { font-weight: 800; font-size: 14px; color: #34d399; letter-spacing: 0.5px; }
+    .creator-row { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
+    .creator-avatar { width: 44px; height: 44px; border-radius: 50%; object-fit: cover; border: 2px solid #059669; }
+    .creator-meta { display: flex; flex-direction: column; }
+    .creator-name { font-weight: 700; font-size: 15px; color: #f8fafc; }
+    .creator-username { font-size: 13px; font-weight: 600; color: #34d399; }
+    .content-title {
+      font-size: 17px; font-weight: 700; color: #f8fafc; margin-bottom: 10px; line-height: 1.4;
+    }
+    .content-caption {
+      font-size: 14px; line-height: 1.6; color: #cbd5e1; margin-bottom: 16px;
+      white-space: pre-wrap; word-break: break-word;
+    }
+    .media-container {
+      margin: 14px 0; border-radius: 16px; overflow: hidden; background: #000;
+      position: relative; display: flex; justify-content: center;
+    }
+    .reel-video { width: 100%; max-height: 480px; display: block; border-radius: 16px; background: #000; }
+    .badges-row { display: flex; flex-wrap: wrap; gap: 8px; margin: 16px 0; }
+    .badge {
+      font-size: 12px; font-weight: 600; padding: 5px 12px; border-radius: 8px;
+    }
+    .badge-category { background: rgba(5, 150, 105, 0.2); color: #34d399; border: 1px solid rgba(5, 150, 105, 0.4); }
+    .badge-ref { background: rgba(100, 116, 139, 0.2); color: #94a3b8; border: 1px solid #475569; }
+    .btn {
+      display: block; width: 100%; padding: 14px 20px; background: #059669;
+      color: #ffffff !important; text-decoration: none; border-radius: 14px;
+      font-size: 15px; font-weight: 700; text-align: center;
+      box-shadow: 0 4px 14px rgba(5, 150, 105, 0.4); margin-top: 12px;
+    }
+    .btn:hover { background: #047857; }
+    .footer-note {
+      margin-top: 18px; font-size: 12px; font-weight: 600; color: #64748b;
+      text-align: center; letter-spacing: 0.3px;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="brand-bar">
+      <img src="https://seerat-backend.onrender.com/assets/logo.png" class="brand-logo" alt="SEERAT">
+      <span class="brand-name">SEERAT</span>
+    </div>
+
+    <div class="creator-row">
+      <img src="${escCreatorPhoto}" class="creator-avatar" alt="${escCreatorName}" onerror="this.onerror=null;this.src='https://seerat-backend.onrender.com/assets/logo.png';">
+      <div class="creator-meta">
+        <span class="creator-name">${escCreatorName}</span>
+        <span class="creator-username">@${escCreatorUsername}</span>
+      </div>
+    </div>
+
+    ${rawTitle ? `<div class="content-title">${escTitle}</div>` : ''}
+    ${rawCaption ? `<div class="content-caption">${escCaption}</div>` : ''}
+
+    <div class="media-container">
+      <video controls poster="${escPosterUrl}" class="reel-video" preload="metadata">
+        <source src="${escVideoUrl}" type="video/mp4">
+        Your browser does not support the video tag.
+      </video>
+    </div>
+
+    <div class="badges-row">
+      <span class="badge badge-category">Category: ${escCategory}</span>
+      ${rawReference ? `<span class="badge badge-ref">Reference: ${escReference}</span>` : ''}
+    </div>
+
+    <a href="${escDeepLink}" class="btn">Watch on SEERAT App</a>
+    <div class="footer-note">Shared from SEERAT &bull; Authentic Islamic Platform</div>
+  </div>
+</body>
+</html>`;
+
+    if (html.includes('${')) {
+      logger.error('CRITICAL: Template expression detected in rendered HTML!');
+      html = html.replace(/\$\{.*?\}/g, '');
+    }
+
+    res.set('Content-Type', 'text/html; charset=utf-8');
+    res.send(html);
+  } catch (err: any) {
+    logger.error('Error loading reel share page:', err);
+    res.status(500).send('<!DOCTYPE html><html><body><h3>Unable to load reel at this time. Please try again later.</h3></body></html>');
+  }
+});
+
 // Mount Admin REST API
 app.use('/api/admin', adminRouter);
 
